@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  basePath: '/interface',
   // Allow mobile devices on the same LAN to access the dev server
   allowedDevOrigins: [
     "192.168.0.192",
