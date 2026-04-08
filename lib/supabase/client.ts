@@ -1,20 +1,22 @@
 "use client";
 
-import { createBrowserClient } from "@supabase/ssr";
+import { createClient as _createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export function createClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+let _singleton: SupabaseClient | null = null;
 
-  // Graceful fallback if env vars aren't configured yet
-  if (!url || !key || url.includes("your-project-ref")) {
-    // Return a mock-ish client that won't crash
-    // In production, these env vars will always be set
-    return createBrowserClient(
-      "https://placeholder.supabase.co",
-      "placeholder-key",
-    );
-  }
+export function createClient(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  return createBrowserClient(url, key);
+  if (_singleton) return _singleton;
+
+  _singleton = _createClient(url, key, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
+
+  return _singleton;
 }
