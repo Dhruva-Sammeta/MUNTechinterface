@@ -1,0 +1,1053 @@
+@import "tailwindcss";
+
+/* ============================================
+   SAPPHIRE MUN — Design System v2
+   Premium dark sapphire aesthetic
+   ============================================ */
+
+@theme {
+  /* Sapphire Core Palette */
+  --color-sapphire-50: #e8f1ff;
+  --color-sapphire-100: #c5dcff;
+  --color-sapphire-200: #8db8ff;
+  --color-sapphire-300: #5594ff;
+  --color-sapphire-400: #2b7aff;
+  --color-sapphire-500: #0a84ff;
+  --color-sapphire-600: #0066d6;
+  --color-sapphire-700: #004da3;
+  --color-sapphire-800: #003470;
+  --color-sapphire-900: #001b3d;
+
+  /* Background System */
+  --color-bg-primary: #050510;
+  --color-bg-secondary: #0a0a1a;
+  --color-bg-surface: #0d0d1a;
+  --color-bg-elevated: #13132a;
+  --color-bg-hover: #1a1a35;
+
+  /* Mode Colors */
+  --color-mode-normal: #0a84ff;
+  --color-mode-crisis: #ff3b30;
+  --color-mode-voting: #30d158;
+  --color-mode-break: #8e8e93;
+
+  /* Pirate Theme (Grand Line Fleet) */
+  --color-pirate-gold: #ffd700;
+  --color-pirate-dark: #1a0a00;
+  --color-pirate-wood: #8b4513;
+  --color-pirate-sea: #006994;
+  --color-pirate-skull: #fffdd0;
+  --color-pirate-blood: #8b0000;
+
+  /* Flame Theme (Dhurandhar) */
+  --color-flame-core: #ff4500;
+  --color-flame-inner: #ff6b35;
+  --color-flame-outer: #ff8c42;
+  --color-flame-ember: #ffa726;
+  --color-flame-dark: #1a0500;
+  --color-flame-smoke: #2d1b00;
+
+  /* Text */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #636370;
+  --color-text-accent: #0a84ff;
+
+  /* Borders */
+  --color-border-default: #1f1f3a;
+  --color-border-hover: #2a2a4a;
+  --color-border-active: #0a84ff;
+
+  /* Shadows */
+  --shadow-glow-sm: 0 0 10px rgba(10, 132, 255, 0.15);
+  --shadow-glow-md: 0 0 20px rgba(10, 132, 255, 0.2);
+  --shadow-glow-lg: 0 0 40px rgba(10, 132, 255, 0.25);
+  --shadow-crisis: 0 0 30px rgba(255, 59, 48, 0.3);
+  --shadow-voting: 0 0 30px rgba(48, 209, 88, 0.3);
+  --shadow-pirate: 0 0 30px rgba(255, 215, 0, 0.3);
+  --shadow-flame: 0 0 30px rgba(255, 69, 0, 0.4);
+
+  /* Animation */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  /* Font Family — Inter matches the SapphireMUN website */
+  --font-heading: "Outfit", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", monospace;
+
+  /* Radius */
+  --radius-card: 14px;
+  --radius-button: 10px;
+  --radius-pill: 999px;
+  --radius-input: 10px;
+}
+
+/* ============================================
+   Base Styles & Mode Overrides
+   ============================================ */
+
+[data-mode="crisis"] {
+  --color-bg-primary: #150000;
+  --color-bg-secondary: #240000;
+  --color-bg-surface: #2d0000;
+  --color-bg-elevated: #3a0000;
+  --color-border-default: #4a0000;
+  --color-border-hover: #ff3b30;
+}
+
+[data-mode="voting"] {
+  --color-bg-primary: #001505;
+  --color-bg-secondary: #00240a;
+  --color-bg-surface: #002d0d;
+  --color-bg-elevated: #003a11;
+  --color-border-default: #004a16;
+  --color-border-hover: #30d158;
+}
+
+[data-mode="break"] {
+  --color-bg-primary: #111;
+  --color-bg-secondary: #1a1a1a;
+  --color-bg-surface: #202020;
+  --color-bg-elevated: #2a2a2a;
+  --color-border-default: #333;
+  --color-border-hover: #8e8e93;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-default) transparent;
+}
+
+::selection {
+  background: rgba(10, 132, 255, 0.3);
+  color: #fff;
+}
+
+html {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  /* Improve text rendering cross-browser */
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: var(--color-bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   Glass Cards
+   ============================================ */
+
+.glass-card {
+  background: rgba(13, 13, 26, 0.7);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-card);
+  transition: all 0.3s var(--ease-smooth);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    transparent 50%
+  );
+  pointer-events: none;
+}
+
+.glass-card:hover {
+  border-color: var(--color-border-hover);
+  box-shadow:
+    var(--shadow-glow-sm),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.glass-card-elevated {
+  background: rgba(19, 19, 42, 0.85);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid var(--color-border-hover);
+  border-radius: var(--radius-card);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-card-elevated::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    transparent 40%
+  );
+  pointer-events: none;
+}
+
+.glass-card--active {
+  border-color: var(--color-border-active);
+  box-shadow:
+    0 0 20px rgba(10, 132, 255, 0.15),
+    inset 0 1px 0 rgba(10, 132, 255, 0.1);
+}
+
+/* ============================================
+   Mode Badge & Indicators
+   ============================================ */
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.3s var(--ease-smooth);
+}
+
+.mode-badge--normal {
+  background: rgba(10, 132, 255, 0.12);
+  color: var(--color-mode-normal);
+  border: 1px solid rgba(10, 132, 255, 0.25);
+}
+
+.mode-badge--crisis {
+  background: rgba(255, 59, 48, 0.12);
+  color: var(--color-mode-crisis);
+  border: 1px solid rgba(255, 59, 48, 0.25);
+  animation: crisis-pulse 2s ease-in-out infinite;
+}
+
+.mode-badge--voting {
+  background: rgba(48, 209, 88, 0.12);
+  color: var(--color-mode-voting);
+  border: 1px solid rgba(48, 209, 88, 0.25);
+}
+
+.mode-badge--break {
+  background: rgba(142, 142, 147, 0.12);
+  color: var(--color-mode-break);
+  border: 1px solid rgba(142, 142, 147, 0.25);
+}
+
+/* ============================================
+   Sapphire Glow Effects
+   ============================================ */
+
+.sapphire-glow {
+  box-shadow: var(--shadow-glow-md);
+  border: 1px solid rgba(10, 132, 255, 0.3);
+}
+
+.sapphire-glow-text {
+  text-shadow: 0 0 20px rgba(10, 132, 255, 0.5);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #93c5fd, #e0f2fe, #60a5fa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ============================================
+   Mode Ring (around components)
+   ============================================ */
+
+.mode-ring {
+  position: relative;
+}
+
+.mode-ring::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from 0deg,
+    transparent,
+    var(--mode-color, var(--color-sapphire-500)),
+    transparent
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: ring-spin 4s linear infinite;
+}
+
+/* ============================================
+   Glow Ring (animated border glow)
+   ============================================ */
+
+/* Glow ring — cross-browser compatible (no @property needed)
+   Uses transform rotation instead of conic-gradient angle animation.
+   Works in Safari, Firefox, and Chrome. */
+.glow-ring {
+  position: relative;
+}
+
+.glow-ring::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    transparent 40%,
+    rgba(10, 132, 255, 0.45) 50%,
+    transparent 60%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  animation: glow-spin 3s linear infinite;
+  pointer-events: none;
+}
+
+/* ============================================
+   Pirate Theme Overrides (Grand Line Fleet)
+   ============================================ */
+
+[data-theme="pirate"] {
+  --color-bg-primary: #0a0500;
+  --color-bg-secondary: #1a0a00;
+  --color-bg-surface: #1f1000;
+  --color-bg-elevated: #2a1500;
+  --color-border-default: #3d2200;
+  --color-border-hover: #5a3300;
+  --color-text-accent: #ffd700;
+  --color-border-active: #ffd700;
+}
+
+[data-theme="pirate"] .glass-card {
+  background: rgba(26, 10, 0, 0.8);
+  border-color: rgba(139, 69, 19, 0.4);
+}
+
+[data-theme="pirate"] .glass-card:hover {
+  box-shadow: var(--shadow-pirate);
+  border-color: rgba(255, 215, 0, 0.3);
+}
+
+[data-theme="pirate"] .mode-badge--normal {
+  background: rgba(255, 215, 0, 0.15);
+  color: var(--color-pirate-gold);
+  border-color: rgba(255, 215, 0, 0.3);
+}
+
+/* ============================================
+   Flame Theme Overrides (Dhurandhar)
+   ============================================ */
+
+[data-theme="flame"] {
+  --color-bg-primary: #0a0200;
+  --color-bg-secondary: #1a0500;
+  --color-bg-surface: #1f0800;
+  --color-bg-elevated: #2d0b00;
+  --color-border-default: #3d1200;
+  --color-border-hover: #5a1a00;
+  --color-text-accent: #ff6b35;
+  --color-border-active: #ff4500;
+}
+
+[data-theme="flame"] .glass-card {
+  background: rgba(26, 5, 0, 0.8);
+  border-color: rgba(255, 69, 0, 0.2);
+}
+
+[data-theme="flame"] .glass-card:hover {
+  box-shadow: var(--shadow-flame);
+  border-color: rgba(255, 107, 53, 0.4);
+}
+
+[data-theme="flame"] .mode-badge--normal {
+  background: rgba(255, 69, 0, 0.15);
+  color: var(--color-flame-core);
+  border-color: rgba(255, 69, 0, 0.3);
+}
+
+/* ============================================
+   Animations
+   ============================================ */
+
+@keyframes crisis-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(255, 59, 48, 0.3);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 25px rgba(255, 59, 48, 0.5);
+  }
+}
+
+@keyframes ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes glow-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Removed @property --glow-angle: not supported in Firefox.
+   glow-ring now uses transform rotation instead. */
+
+@keyframes sapphire-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes flame-flicker {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  25% {
+    opacity: 0.9;
+    transform: scale(1.02);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(0.98);
+  }
+  75% {
+    opacity: 0.88;
+    transform: scale(1.01);
+  }
+}
+
+@keyframes pirate-sway {
+  0%,
+  100% {
+    transform: rotate(-1deg);
+  }
+  50% {
+    transform: rotate(1deg);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.5;
+  }
+}
+
+@keyframes gentle-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes speaking-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 12px var(--glow-color, rgba(10, 132, 255, 0.3));
+  }
+  50% {
+    box-shadow: 0 0 28px var(--glow-color, rgba(10, 132, 255, 0.5));
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s var(--ease-smooth) both;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s var(--ease-smooth) both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.4s var(--ease-smooth) both;
+}
+
+.animate-slide-in-up {
+  animation: slide-in-up 0.35s var(--ease-spring) both;
+}
+
+.animate-flame-flicker {
+  animation: flame-flicker 3s ease-in-out infinite;
+}
+
+.animate-pirate-sway {
+  animation: pirate-sway 4s ease-in-out infinite;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.animate-gentle-float {
+  animation: gentle-float 3s ease-in-out infinite;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.35s var(--ease-spring) both;
+}
+
+.animate-speaking-glow {
+  animation: speaking-glow 2s ease-in-out infinite;
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: var(--color-sapphire-500);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-smooth);
+}
+
+.btn-primary:hover {
+  background: var(--color-sapphire-400);
+  box-shadow: var(--shadow-glow-md);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: transparent;
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-button);
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-smooth);
+}
+
+.btn-secondary:hover {
+  background: var(--color-bg-hover);
+  border-color: var(--color-border-hover);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: rgba(255, 59, 48, 0.15);
+  color: var(--color-mode-crisis);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-smooth);
+}
+
+.btn-danger:hover {
+  background: rgba(255, 59, 48, 0.25);
+  box-shadow: var(--shadow-crisis);
+}
+
+.btn-danger:active {
+  transform: scale(0.97);
+}
+
+.btn-success {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: rgba(48, 209, 88, 0.15);
+  color: var(--color-mode-voting);
+  border: 1px solid rgba(48, 209, 88, 0.3);
+  border-radius: var(--radius-button);
+  font-weight: 600;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s var(--ease-smooth);
+}
+
+.btn-success:hover {
+  background: rgba(48, 209, 88, 0.25);
+  box-shadow: var(--shadow-voting);
+}
+
+.btn-success:active {
+  transform: scale(0.97);
+}
+
+/* ============================================
+   Inputs
+   ============================================ */
+
+.input-field {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-input);
+  font-size: 0.875rem;
+  transition: all 0.2s var(--ease-smooth);
+  outline: none;
+}
+
+.input-field::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input-field:focus {
+  border-color: var(--color-sapphire-500);
+  box-shadow:
+    0 0 0 3px rgba(10, 132, 255, 0.1),
+    0 0 12px rgba(10, 132, 255, 0.08);
+}
+
+/* ============================================
+   Timer Display
+   ============================================ */
+
+.timer-display {
+  font-family: var(--font-heading);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+.timer-ring {
+  transition: stroke-dashoffset 1s linear;
+}
+
+/* ============================================
+   Scrollbar
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-hover);
+}
+
+/* ============================================
+   Utility Animations (Stagger)
+   ============================================ */
+
+.stagger-1 {
+  animation-delay: 0.04s;
+}
+.stagger-2 {
+  animation-delay: 0.08s;
+}
+.stagger-3 {
+  animation-delay: 0.12s;
+}
+.stagger-4 {
+  animation-delay: 0.16s;
+}
+.stagger-5 {
+  animation-delay: 0.2s;
+}
+.stagger-6 {
+  animation-delay: 0.24s;
+}
+.stagger-7 {
+  animation-delay: 0.28s;
+}
+.stagger-8 {
+  animation-delay: 0.32s;
+}
+
+/* ============================================
+   Responsive Sidebar → Mobile Bottom Nav
+   ============================================ */
+
+/* Desktop sidebar */
+.app-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-border-default);
+  background: var(--color-bg-secondary);
+  transition: width 0.3s var(--ease-smooth);
+  z-index: 30;
+}
+
+/* Mobile bottom nav */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border-default);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 4px 8px;
+  padding-bottom: env(safe-area-inset-bottom, 4px);
+}
+
+.mobile-bottom-nav .nav-items {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 2px;
+}
+
+.mobile-bottom-nav .nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  transition: all 0.2s var(--ease-smooth);
+  position: relative;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-bottom-nav .nav-item.active {
+  color: var(--color-text-accent);
+}
+
+.mobile-bottom-nav .nav-item .badge {
+  position: absolute;
+  top: 2px;
+  right: 50%;
+  transform: translateX(calc(50% + 8px));
+  min-width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  border-radius: 7px;
+  color: #fff;
+  padding: 0 3px;
+}
+
+@media (max-width: 767px) {
+  .app-sidebar {
+    display: none !important;
+  }
+
+  .mobile-bottom-nav {
+    display: block;
+  }
+
+  /* Add bottom padding to main content so it doesn't hide behind nav */
+  .app-main-content {
+    padding-bottom: 72px !important;
+  }
+
+  /* Reduce main padding on mobile */
+  .app-content-area {
+    padding: 16px !important;
+  }
+
+  /* Bottom footer bar hidden on mobile (redundant with bottom nav) */
+  .app-footer-bar {
+    display: none !important;
+  }
+
+  /* Mobile header adjustments */
+  .app-header {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .app-sidebar {
+    width: 64px;
+  }
+
+  .app-sidebar .sidebar-label,
+  .app-sidebar .sidebar-info,
+  .app-sidebar .sidebar-expanded {
+    display: none;
+  }
+
+  .app-sidebar .sidebar-icon-only {
+    display: flex;
+    justify-content: center;
+  }
+}
+
+/* ============================================
+   Hyderabad 2.0 "Diamond Edition" Hero Theme
+   ============================================ */
+
+.hyd-theme {
+  --ocean-1000: #040818;
+  --ocean-950: #060d26;
+  --ocean-900: #081840;
+  --ocean-800: #0c2460;
+}
+
+/* Deeper, richer background */
+.hyd-theme.bg-app {
+  background:
+    radial-gradient(
+      1000px 600px at 50% -5%,
+      rgba(15, 224, 255, 0.06),
+      transparent 60%
+    ),
+    radial-gradient(
+      800px 500px at 20% 110%,
+      rgba(7, 17, 59, 0.5),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #060d26 0%, #040818 100%);
+}
+
+/* Metallic text — cool sapphire gradient */
+.metallic-text {
+  background: linear-gradient(90deg, #93c5fd, #e0f2fe, #60a5fa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Cards — darker base with cyan accent border */
+.metallic-card {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(255, 255, 255, 0.01)
+    ),
+    radial-gradient(
+      100% 220% at 100% 0%,
+      rgba(15, 224, 255, 0.05),
+      transparent 40%
+    ),
+    linear-gradient(180deg, rgba(6, 13, 38, 0.95), rgba(4, 8, 24, 0.95));
+  border: 1px solid rgba(15, 224, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 34px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(15, 224, 255, 0.06);
+}
+
+/* ─── Dhurandhar card animations ─── */
+@keyframes dhurandhar-scan {
+  0% {
+    top: -2px;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes dhurandhar-ring-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 20px rgba(220, 60, 30, 0.4),
+      0 0 0 1px rgba(200, 80, 40, 0.4),
+      inset 0 0 10px rgba(255, 100, 40, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 0 35px rgba(220, 60, 30, 0.8),
+      0 0 0 2px rgba(240, 100, 50, 0.7),
+      inset 0 0 16px rgba(255, 120, 50, 0.2);
+  }
+}
+
+@keyframes dhurandhar-flame {
+  0% {
+    transform: scaleY(1) scaleX(1) translateY(0px);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scaleY(0.75) scaleX(0.85) translateY(2px);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scaleY(0.9) scaleX(1.1) translateY(1px);
+    opacity: 0.8;
+  }
+}
+
+/* ============================================
+   Custom Scrollbar (thin, for scrollable panels)
+   ============================================ */
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
