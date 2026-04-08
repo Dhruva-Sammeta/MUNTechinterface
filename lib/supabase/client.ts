@@ -16,6 +16,20 @@ export function createClient(): SupabaseClient {
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
+    global: {
+      headers: {
+        apikey: key,
+      },
+    },
+    realtime: {
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      params: {
+        apikey: key,
+      },
+    },
   });
 
   return _singleton;
