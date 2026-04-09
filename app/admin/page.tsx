@@ -338,6 +338,130 @@ export default function AdminPage() {
       }
     }
 
+    // ---- Passcode management (list, revoke, rotate, export) ----
+    const [passcodes, setPasscodes] = useState<any[]>([]);
+    const [isLoadingPasscodes, setIsLoadingPasscodes] = useState(false);
+    const [rotatingPasscodeId, setRotatingPasscodeId] = useState<string | null>(null);
+
+    const fetchPasscodes = useCallback(async () => {
+      setIsLoadingPasscodes(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error("Not authenticated");
+
+        const res = await fetch("/api/admin/passcodes/list", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to fetch passcodes");
+        setPasscodes(json.passcodes || []);
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally {
+        setIsLoadingPasscodes(false);
+      }
+    }, [supabase]);
+
+    useEffect(() => {
+      fetchPasscodes();
+    }, [fetchPasscodes]);
+
+    async function revokePasscode(passcodeId: string, revoke = true) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error("Not authenticated");
+
+        const res = await fetch("/api/admin/passcodes/revoke", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ passcodeId, revoke }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to update passcode");
+        toast.success(revoke ? "Passcode revoked" : "Passcode restored");
+        fetchPasscodes();
+      } catch (err: any) {
+        toast.error(err.message);
+      }
+    }
+
+    async function rotatePasscode(passcode: any) {
+      if (!confirm("Rotate this passcode? This will create a new passcode and revoke the old one.")) return;
+      setRotatingPasscodeId(passcode.id);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error("Not authenticated");
+
+        // Create a new passcode with same metadata
+        const createRes = await fetch("/api/admin/passcodes/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            committeeId: passcode.committee_id,
+            displayName: passcode.display_name,
+            role: passcode.role,
+          }),
+        });
+        const createJson = await createRes.json();
+        if (!createRes.ok) throw new Error(createJson.error || "Failed to create rotated passcode");
+
+        // Revoke old passcode
+        const revokeRes = await fetch("/api/admin/passcodes/revoke", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ passcodeId: passcode.id, revoke: true }),
+        });
+        const revokeJson = await revokeRes.json();
+        if (!revokeRes.ok) throw new Error(revokeJson.error || "Failed to revoke old passcode");
+
+        // Copy new passcode to clipboard and show to admin
+        const newPlain = createJson.passcode;
+        try {
+          await navigator.clipboard.writeText(newPlain);
+          toast.success("Rotated passcode (copied to clipboard)");
+        } catch {
+          toast.success("Rotated passcode — copy manually:");
+          // fallback: show via generatedPasscode state so admin can copy
+          setGeneratedPasscode(newPlain);
+        }
+
+        fetchPasscodes();
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally {
+        setRotatingPasscodeId(null);
+      }
+    }
+
+    function exportPasscodesCSV() {
+      if (!passcodes.length) return toast.error("No passcodes to export");
+      let csv = "ID,Display Name,Committee,Role,Created At,Expires At,Assigned To,Assigned At,Revoked,Is Persistent\n";
+      passcodes.forEach((p) => {
+        const c = committees.find((c) => c.id === p.committee_id);
+        const assigned = delegates.find((d) => d.id === p.assigned_user_id);
+        csv += `"${p.id}","${p.display_name || ""}","${c?.short_name || ""}","${p.role}","${p.created_at || ""}","${p.expires_at || ""}","${assigned?.display_name || ""}","${p.assigned_at || ""}","${p.revoked}","${p.is_persistent}"\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `passcodes_${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
   const tabs = [
     { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
     {
@@ -705,11 +829,71 @@ export default function AdminPage() {
                   <div className="mt-4">
                     <h4 className="text-sm font-bold mb-2">Recent Passcodes</h4>
                     <div className="bg-black/10 p-3 rounded">
-                      <button onClick={async () => {
-                        const { data } = await fetch('/api/admin/passcodes/list', { headers: { 'Authorization': `Bearer ${ (await (await fetch('/api/admin/status')).json()).token || '' }` } }).then(r => r.json());
-                        console.log(data);
-                      }} className="px-3 py-2 rounded bg-white/5">Refresh (admin)</button>
-                      <p className="text-xs text-white/40 mt-2">Use the Passcodes List endpoint to build a full management UI. See server audit logs for actions.</p>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex gap-2">
+                          <button onClick={fetchPasscodes} className="px-3 py-2 rounded bg-white/5">Refresh</button>
+                          <button onClick={exportPasscodesCSV} className="px-3 py-2 rounded bg-white/5 flex items-center gap-2"><Download size={14} /> Export CSV</button>
+                        </div>
+                        <div className="text-xs text-white/40">
+                          {isLoadingPasscodes ? "Loading…" : `${passcodes.length} passcodes`}
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-64 custom-scrollbar">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr style={{ borderBottom: "1px solid var(--color-border-default)" }}>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Delegation</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Committee</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Role</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Created</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Expires</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Assigned</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Revoked</th>
+                              <th className="text-right py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {passcodes.map((p) => {
+                              const c = committees.find((c) => c.id === p.committee_id);
+                              const assigned = delegates.find((d) => d.id === p.assigned_user_id);
+                              return (
+                                <tr key={p.id} className="hover:bg-white/5 transition-colors" style={{ borderBottom: "1px solid var(--color-border-default)" }}>
+                                  <td className="py-2 px-3 font-medium text-xs">{p.display_name || "—"}</td>
+                                  <td className="py-2 px-3 text-xs"><span className="text-[10px] font-bold px-2 py-1 rounded-md bg-black/40 border border-white/5">{c?.short_name || "—"}</span></td>
+                                  <td className="py-2 px-3 text-xs">{p.role}</td>
+                                  <td className="py-2 px-3 text-xs">{p.created_at ? new Date(p.created_at).toLocaleString() : ""}</td>
+                                  <td className="py-2 px-3 text-xs">{p.expires_at ? new Date(p.expires_at).toLocaleString() : ""}</td>
+                                  <td className="py-2 px-3 text-xs">{assigned?.display_name || "-"}</td>
+                                  <td className="py-2 px-3 text-xs">{p.revoked ? "Yes" : "No"}</td>
+                                  <td className="py-2 px-3 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        onClick={() => revokePasscode(p.id, !p.revoked)}
+                                        className={`p-1.5 rounded transition-colors ${p.revoked ? "bg-green-500/10 text-green-400" : "text-red-500/60 hover:text-red-400 hover:bg-red-500/10"}`}
+                                      >
+                                        {p.revoked ? <Check size={13} /> : <Trash2 size={13} />}
+                                      </button>
+                                      <button
+                                        onClick={() => rotatePasscode(p)}
+                                        className="p-1.5 rounded bg-white/5"
+                                        disabled={!!rotatingPasscodeId}
+                                      >
+                                        {rotatingPasscodeId === p.id ? "Rotating…" : "Rotate"}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {passcodes.length === 0 && (
+                              <tr>
+                                <td colSpan={8} className="py-4 px-3 text-xs text-white/40">No passcodes yet</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
