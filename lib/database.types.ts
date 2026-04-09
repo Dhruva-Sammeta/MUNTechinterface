@@ -43,6 +43,7 @@ export interface Delegate {
   display_name: string;
   role: DelegateRole;
   is_present: boolean;
+  has_logged_in?: boolean;
   joined_at: string;
 }
 

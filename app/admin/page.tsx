@@ -320,7 +320,13 @@ export default function AdminPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to register delegate");
 
-      toast.success("Delegate registered successfully");
+      // If backend returned a passcode (delegate/eb flow), show it so admin can copy/share
+      if (result.passcode) {
+        setGeneratedPasscode(result.passcode);
+        toast.success("Passcode created — copy and share with delegate");
+      } else {
+        toast.success("Delegate registered successfully");
+      }
       setShowRegForm(false);
       // Reset form
       setNewDelEmail("");

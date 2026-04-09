@@ -177,9 +177,11 @@ export default function PresentationPage() {
   const offset = circumference * (1 - timer.progress);
 
   const presentCount = delegates.filter(
-    (d) => d.is_present && d.role === "delegate",
+    (d) => d.is_present && d.role === "delegate" && (d.has_logged_in ?? false),
   ).length;
-  const totalDelegates = delegates.filter((d) => d.role === "delegate").length;
+  const totalDelegates = delegates.filter(
+    (d) => d.role === "delegate" && (d.has_logged_in ?? false),
+  ).length;
 
   return (
     <div

@@ -67,18 +67,31 @@ export async function POST(req: Request) {
 
     let delegateId: string | null = null;
     if (existingDelegate) {
-      // Update existing delegate record with committee/role
+      // Update existing delegate record with committee/role and mark logged-in
       const { error: updateError } = await supabaseAdmin
         .from("delegates")
-        .update({ committee_id: matched.committee_id, display_name: displayName || matched.display_name, country: country || matched.display_name, role: matched.role })
+        .update({
+          committee_id: matched.committee_id,
+          display_name: displayName || matched.display_name,
+          country: country || matched.display_name,
+          role: matched.role,
+          has_logged_in: true,
+        })
         .eq("id", existingDelegate.id);
       if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
       delegateId = existingDelegate.id;
     } else {
-      // Insert new delegate record
+      // Insert new delegate record (mark as logged-in)
       const { data: inserted, error: insertError } = await supabaseAdmin
         .from("delegates")
-        .insert({ user_id: user.id, committee_id: matched.committee_id, display_name: displayName || matched.display_name, country: country || matched.display_name, role: matched.role })
+        .insert({
+          user_id: user.id,
+          committee_id: matched.committee_id,
+          display_name: displayName || matched.display_name,
+          country: country || matched.display_name,
+          role: matched.role,
+          has_logged_in: true,
+        })
         .select()
         .maybeSingle();
       if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
