@@ -702,6 +702,16 @@ export default function AdminPage() {
                       </div>
                     </div>
                   </form>
+                  <div className="mt-4">
+                    <h4 className="text-sm font-bold mb-2">Recent Passcodes</h4>
+                    <div className="bg-black/10 p-3 rounded">
+                      <button onClick={async () => {
+                        const { data } = await fetch('/api/admin/passcodes/list', { headers: { 'Authorization': `Bearer ${ (await (await fetch('/api/admin/status')).json()).token || '' }` } }).then(r => r.json());
+                        console.log(data);
+                      }} className="px-3 py-2 rounded bg-white/5">Refresh (admin)</button>
+                      <p className="text-xs text-white/40 mt-2">Use the Passcodes List endpoint to build a full management UI. See server audit logs for actions.</p>
+                    </div>
+                  </div>
                 </motion.div>
               )}
 

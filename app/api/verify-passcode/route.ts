@@ -37,6 +37,22 @@ export async function POST(req: Request) {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // Rate limiting: count failed attempts from this IP in the last window
+    const ip = (req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown").split(",")[0].trim();
+    const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+    const MAX_FAILED = 8; // max failed attempts in window
+    const since = new Date(Date.now() - WINDOW_MS).toISOString();
+    const { count: failedCount } = await supabaseAdmin
+      .from("passcode_attempts")
+      .select("id", { count: "exact" })
+      .eq("ip", ip)
+      .eq("success", false)
+      .gte("created_at", since);
+
+    if ((failedCount || 0) >= MAX_FAILED) {
+      return NextResponse.json({ valid: false, error: "Too many attempts, try again later" }, { status: 429 });
+    }
+
     // Find committee id from join code if provided
     let committeeId: string | null = null;
     if (committeeJoinCode) {
@@ -63,11 +79,14 @@ export async function POST(req: Request) {
       // If committee filter is provided, skip others
       if (committeeId && p.committee_id !== committeeId) continue;
       if (p.expires_at && new Date(p.expires_at).getTime() <= now) continue;
+      if (p.revoked) continue;
 
       const derived = crypto
         .pbkdf2Sync(code, p.passcode_salt, 310000, 32, "sha256")
         .toString("hex");
       if (derived === p.passcode_hash) {
+        // record successful attempt
+        await supabaseAdmin.from("passcode_attempts").insert({ ip, committee_id: committeeId, passcode_id: p.id, success: true });
         return NextResponse.json({
           valid: true,
           role: p.role || "delegate",
@@ -78,6 +97,9 @@ export async function POST(req: Request) {
       }
     }
 
+
+    // record failed attempt
+    await supabaseAdmin.from("passcode_attempts").insert({ ip, committee_id: committeeId, success: false });
     return NextResponse.json({ valid: false });
   } catch (err: any) {
     return NextResponse.json({ valid: false, error: err.message }, { status: 400 });

@@ -51,8 +51,11 @@ export async function POST(req: Request) {
     };
     if (expiresAt) insertObj.expires_at = expiresAt;
 
-    const { error: insertError } = await supabaseAdmin.from("delegate_passcodes").insert(insertObj);
+    const { error: insertError, data: inserted } = await supabaseAdmin.from("delegate_passcodes").insert(insertObj).select().maybeSingle();
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+
+    // Audit log
+    await supabaseAdmin.from("passcode_audit").insert({ action: "create", admin_user_id: adminUser.id, passcode_id: inserted.id, details: { display_name: displayName, role: role || "delegate", is_persistent: true } });
 
     return NextResponse.json({ success: true, passcode: plain });
   } catch (err: any) {

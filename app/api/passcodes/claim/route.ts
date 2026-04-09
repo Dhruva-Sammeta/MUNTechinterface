@@ -29,9 +29,6 @@ export async function POST(req: Request) {
       .maybeSingle();
     const committeeId = committeeData?.id;
     if (!committeeId) return NextResponse.json({ error: "Invalid committee" }, { status: 400 });
-
-    // Fetch candidate passcodes for this committee (do not filter out previously redeemed,
-    // passcodes are now persistent and claimable if not assigned to another user)
     const { data: passcodes } = await supabaseAdmin
       .from("delegate_passcodes")
       .select("*")
@@ -46,9 +43,8 @@ export async function POST(req: Request) {
     let matched: any = null;
     for (const p of passcodes) {
       if (p.expires_at && new Date(p.expires_at).getTime() <= now) continue;
-      const derived = crypto
-        .pbkdf2Sync(String(code).toUpperCase(), p.passcode_salt, 310000, 32, "sha256")
-        .toString("hex");
+      if (p.revoked) continue;
+      const derived = crypto.pbkdf2Sync(String(code).toUpperCase(), p.passcode_salt, 310000, 32, "sha256").toString("hex");
       if (derived === p.passcode_hash) {
         matched = p;
         break;
