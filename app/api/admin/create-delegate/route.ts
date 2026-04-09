@@ -45,8 +45,8 @@ export async function POST(req: Request) {
     // 2. Parse request body
     const { email, password, displayName, country, committeeId, role } = await req.json();
 
-    if (!email || !password || !displayName || !role || (role !== "admin" && !committeeId)) {
-      return NextResponse.json({ error: "Missing required fields (email, password, name, role, committee)" }, { status: 400 });
+    if (!email || !password || !displayName || !committeeId || !role) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     // 3. Create Auth User

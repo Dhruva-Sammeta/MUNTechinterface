@@ -541,12 +541,11 @@ export default function AdminPage() {
                       <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Committee</label>
                       <select 
                         className="input-field text-xs bg-black/40 border-white/10 w-full"
-                        required={newDelRole !== "admin"}
+                        required
                         value={newDelCommitteeId}
                         onChange={e => setNewDelCommitteeId(e.target.value)}
                       >
                         <option value="">Select Committee</option>
-                        {newDelRole === "admin" && <option value="">No Committee (Global)</option>}
                         {committees.map(c => (
                           <option key={c.id} value={c.id}>{c.name} ({c.short_name})</option>
                         ))}

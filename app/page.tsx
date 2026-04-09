@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Committee } from "@/lib/database.types";
-import { verifyPasscode } from "@/app/actions/auth";
 
 // Authentication is strictly hierarchical: Start as delegate, then escalate.
 
@@ -24,7 +23,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
-  const [verifiedRole, setVerifiedRole] = useState<string | null>(null);
 
   // Initial load of committees
   useEffect(() => {
@@ -44,26 +42,24 @@ export default function LoginPage() {
   }, [passcode]);
 
   // ── Step 1: Validate passcode ─────────────────────────────────────────────
-  async function handlePasscodeSubmit(e: React.FormEvent) {
+  function handlePasscodeSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!passcode.trim()) return;
-    
-    setLoading(true);
     setError("");
 
-    try {
-      const role = await verifyPasscode(passcode, matchedCommittee?.id);
-      
-      if (role) {
-        setVerifiedRole(role);
-        setStep("delegation");
-      } else {
-        setError("Invalid passcode. Enter your committee join code, EB code, or Admin code.");
-      }
-    } catch (err: any) {
-      setError("Verification failed: " + err.message);
-    } finally {
-      setLoading(false);
+    if (!matchedCommittee) {
+      setError("Please select a committee first.");
+      return;
+    }
+
+    const code = passcode.toUpperCase();
+    if (
+      code === matchedCommittee.join_code ||
+      code === `${matchedCommittee.join_code}_EB` ||
+      code === "86303"
+    ) {
+      setStep("delegation");
+    } else {
+      setError("Invalid passcode. Enter your committee join code, EB code, or Admin code.");
     }
   }
 
@@ -105,11 +101,17 @@ export default function LoginPage() {
       .eq("user_id", uid)
       .maybeSingle();
 
-    // Determine role based on previously verified passcode
-    const assignedRole = verifiedRole || "delegate";
+    // Determine role based on passcode used
+    let assignedRole = "delegate";
+    const code = passcode.toUpperCase();
+    if (code === "86303") {
+      assignedRole = "admin";
+    } else if (code === `${matchedCommittee.join_code}_EB`) {
+      assignedRole = "eb";
+    }
 
     const payload = {
-      committee_id: assignedRole === "admin" ? (matchedCommittee?.id || null) : matchedCommittee?.id,
+      committee_id: matchedCommittee.id,
       display_name: delegation.trim(),
       country: delegation.trim(),
       role: assignedRole,
@@ -136,11 +138,11 @@ export default function LoginPage() {
       }
     }
 
-    // Role-based routing logic unchanged but ensuring matchedCommittee exists for non-admins
+    // Route based on role
     if (assignedRole === "delegate") {
-      router.push(`/delegate/${matchedCommittee?.id}`);
+      router.push(`/delegate/${matchedCommittee.id}`);
     } else if (assignedRole === "eb") {
-      router.push(`/eb/${matchedCommittee?.id}`);
+      router.push(`/eb/${matchedCommittee.id}`);
     } else {
       router.push(`/admin`);
     }
@@ -397,19 +399,10 @@ export default function LoginPage() {
           </AnimatePresence>
 
           {/* Footer note */}
-          <div className="mt-8 pt-6 border-t border-white/5 space-y-4 relative">
-            <p className="text-center text-[10px] text-blue-200/20 uppercase tracking-widest font-medium">
-              Join via committee code · Elevate access in settings
-            </p>
-            <div className="flex flex-col items-center gap-1.5 pt-2">
-              <p className="text-[10px] text-white/10 font-medium tracking-wider">
-                Credits: <span className="text-white/20">Dhruva Sammeta</span>
-              </p>
-              <p className="text-[9px] text-white/5 tracking-[0.2em] uppercase">
-                All rights reserved, Sapphire MUN
-              </p>
-            </div>
-          </div>
+          <p className="text-center text-[10px] text-blue-200/20 mt-6 relative">
+            Join your committee via join code first, then elevate access in
+            settings.
+          </p>
         </div>
       </motion.div>
     </div>

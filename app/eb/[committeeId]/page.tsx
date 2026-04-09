@@ -991,8 +991,6 @@ export default function EBPage() {
           onDismiss={() => {}}
         />
       )}
-    </main>
-      </div>
     </div>
   );
 }

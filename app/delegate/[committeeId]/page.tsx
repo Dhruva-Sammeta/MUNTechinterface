@@ -1111,10 +1111,10 @@ export default function DelegatePage() {
             </button>
           </div>
           <div
-            className="text-right hidden sm:block text-[9px] uppercase tracking-[0.2em] opacity-20"
+            className="text-xs hidden sm:block"
             style={{ color: "var(--color-text-muted)" }}
           >
-            {presentCount}/{totalDelegates} present · SAPPHIRE MUN
+            {presentCount}/{totalDelegates} present · {mode} session
           </div>
         </footer>
       </div>
