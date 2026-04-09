@@ -159,20 +159,16 @@ export default function LoginPage() {
           {/* Email */}
           <div className="mb-4">
             <label
-              className="block text-xs font-medium mb-2"
+              className="flex items-center gap-2 text-xs font-medium mb-2"
               style={{ color: "var(--color-text-secondary)" }}
             >
-              Email
+              <Mail size={14} style={{ color: "var(--color-text-muted)" }} />
+              <span>Email</span>
             </label>
-            <div className="relative">
-              <Mail
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2"
-                style={{ color: "var(--color-text-muted)" }}
-              />
+            <div>
               <input
                 type="email"
-                className="input-field pl-10"
+                className="input-field"
                 placeholder="admin@sapphiremun.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -190,28 +186,32 @@ export default function LoginPage() {
               >
                 Password
               </label>
-              <div className="relative">
-                <Lock
-                  size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: "var(--color-text-muted)" }}
-                />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  className="input-field pl-10 pr-10"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2"
-                  style={{ color: "var(--color-text-muted)" }}
-                  onClick={() => setShowPassword(!showPassword)}
+              <div>
+                <label
+                  className="flex items-center gap-2 text-xs font-medium mb-2"
+                  style={{ color: "var(--color-text-secondary)" }}
                 >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+                  <Lock size={14} style={{ color: "var(--color-text-muted)" }} />
+                  <span>Password</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className="input-field pr-12"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2"
+                    style={{ color: "var(--color-text-muted)" }}
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
           )}
