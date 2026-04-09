@@ -30,12 +30,12 @@ export async function POST(req: Request) {
     const committeeId = committeeData?.id;
     if (!committeeId) return NextResponse.json({ error: "Invalid committee" }, { status: 400 });
 
-    // Fetch candidate passcodes for this committee that are not redeemed
+    // Fetch candidate passcodes for this committee (do not filter out previously redeemed,
+    // passcodes are now persistent and claimable if not assigned to another user)
     const { data: passcodes } = await supabaseAdmin
       .from("delegate_passcodes")
       .select("*")
       .eq("committee_id", committeeId)
-      .eq("redeemed", false)
       .order("created_at", { ascending: false });
 
     if (!passcodes || passcodes.length === 0) {
@@ -56,6 +56,11 @@ export async function POST(req: Request) {
     }
 
     if (!matched) return NextResponse.json({ error: "Invalid passcode" }, { status: 400 });
+
+    // If the passcode is already assigned to a different user, reject
+    if (matched.assigned_user_id && matched.assigned_user_id !== user.id) {
+      return NextResponse.json({ error: "Passcode already assigned to another user" }, { status: 403 });
+    }
 
     // Check if delegate record for this user exists
     const { data: existingDelegate } = await supabaseAdmin
@@ -84,10 +89,10 @@ export async function POST(req: Request) {
       delegateId = inserted?.id ?? null;
     }
 
-    // Mark passcode redeemed
+    // Assign passcode to this user (persistent)
     await supabaseAdmin
       .from("delegate_passcodes")
-      .update({ redeemed: true, redeemed_by: delegateId, redeemed_at: new Date().toISOString() })
+      .update({ assigned_user_id: delegateId, assigned_at: new Date().toISOString() })
       .eq("id", matched.id);
 
     return NextResponse.json({ success: true, role: matched.role || "delegate" });

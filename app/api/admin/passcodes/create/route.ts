@@ -47,6 +47,7 @@ export async function POST(req: Request) {
       passcode_salt: salt,
       display_name: displayName,
       role: role || "delegate",
+      is_persistent: true,
     };
     if (expiresAt) insertObj.expires_at = expiresAt;
 

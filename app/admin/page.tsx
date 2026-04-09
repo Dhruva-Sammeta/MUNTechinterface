@@ -566,7 +566,7 @@ export default function AdminPage() {
                 >
                   <div className="flex items-center gap-3 mb-2">
                     <ShieldAlert size={18} className="text-amber-400" />
-                    <h3 className="text-sm font-bold uppercase tracking-wider">Secure Registration</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Admin User Registration</h3>
                   </div>
                   
                   <form onSubmit={registerDelegate} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -574,7 +574,7 @@ export default function AdminPage() {
                       <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Account Email</label>
                       <input 
                         className="input-field text-xs bg-black/40 border-white/10 w-full" 
-                        placeholder="delegate@example.com"
+                        placeholder="admin@example.com"
                         type="email"
                         required
                         value={newDelEmail}

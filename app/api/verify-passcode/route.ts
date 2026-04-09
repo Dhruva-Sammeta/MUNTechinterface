@@ -62,8 +62,6 @@ export async function POST(req: Request) {
     for (const p of passcodes) {
       // If committee filter is provided, skip others
       if (committeeId && p.committee_id !== committeeId) continue;
-
-      if (p.redeemed) continue;
       if (p.expires_at && new Date(p.expires_at).getTime() <= now) continue;
 
       const derived = crypto
@@ -75,7 +73,7 @@ export async function POST(req: Request) {
           role: p.role || "delegate",
           assignedDisplayName: p.display_name,
           passcodeId: p.id,
-          assigned: true,
+          assigned: !!p.assigned_user_id,
         });
       }
     }
