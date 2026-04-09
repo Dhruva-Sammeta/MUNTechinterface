@@ -15,6 +15,16 @@ import {
   UserPlus,
   ShieldAlert,
 } from "lucide-react";
+
+// Additional icons used in this file
+import {
+  LayoutDashboard,
+  Users,
+  Megaphone,
+  Download,
+  Settings,
+  Shield,
+} from "lucide-react";
 import { countryFlag } from "@/lib/countryFlag";
 import type {
   Committee,
