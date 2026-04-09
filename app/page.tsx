@@ -42,7 +42,7 @@ export default function LoginPage() {
   }, [passcode]);
 
   // ── Step 1: Validate passcode ─────────────────────────────────────────────
-  function handlePasscodeSubmit(e: React.FormEvent) {
+  async function handlePasscodeSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
 
@@ -52,14 +52,31 @@ export default function LoginPage() {
     }
 
     const code = passcode.toUpperCase();
+
+    // Quick client-side checks for committee join / EB codes
     if (
       code === matchedCommittee.join_code ||
-      code === `${matchedCommittee.join_code}_EB` ||
-      code === "86303"
+      code === `${matchedCommittee.join_code}_EB`
     ) {
       setStep("delegation");
-    } else {
-      setError("Invalid passcode. Enter your committee join code, EB code, or Admin code.");
+      return;
+    }
+
+    // For admin passcode, verify server-side so the secret is not embedded in client bundles
+    try {
+      const res = await fetch("/api/verify-passcode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, committeeJoinCode: matchedCommittee.join_code }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.valid) {
+        setStep("delegation");
+      } else {
+        setError("Invalid passcode. Enter your committee join code, EB code, or Admin code.");
+      }
+    } catch (err) {
+      setError("Unable to verify passcode. Try again later.");
     }
   }
 
@@ -101,13 +118,20 @@ export default function LoginPage() {
       .eq("user_id", uid)
       .maybeSingle();
 
-    // Determine role based on passcode used
+    // Determine role based on passcode using server-side verification
     let assignedRole = "delegate";
-    const code = passcode.toUpperCase();
-    if (code === "86303") {
-      assignedRole = "admin";
-    } else if (code === `${matchedCommittee.join_code}_EB`) {
-      assignedRole = "eb";
+    try {
+      const res = await fetch("/api/verify-passcode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: passcode.toUpperCase(), committeeJoinCode: matchedCommittee.join_code }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.valid) {
+        assignedRole = data.role || "delegate";
+      }
+    } catch (err) {
+      // keep assignedRole as delegate on failure
     }
 
     const payload = {
