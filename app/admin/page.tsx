@@ -181,10 +181,11 @@ export default function AdminPage() {
   function exportCSV(type: "delegates" | "attendance") {
     let csv = "";
     if (type === "delegates") {
-      csv = "Name,Country,Committee,Role,Present\n";
+      // Include delegate ID in same format as stored (UUID)
+      csv = "ID,Name,Country,Committee,Role,Present\n";
       delegates.forEach((d) => {
         const c = committees.find((c) => c.id === d.committee_id);
-        csv += `"${d.display_name}","${d.country}","${c?.short_name || ""}","${d.role}","${d.is_present}"\n`;
+        csv += `"${d.id}","${d.display_name}","${d.country}","${c?.short_name || ""}","${d.role}","${d.is_present}"\n`;
       });
     }
     const blob = new Blob([csv], { type: "text/csv" });
@@ -447,11 +448,12 @@ export default function AdminPage() {
 
     function exportPasscodesCSV() {
       if (!passcodes.length) return toast.error("No passcodes to export");
-      let csv = "ID,Display Name,Committee,Role,Created At,Expires At,Assigned To,Assigned At,Revoked,Is Persistent\n";
+      // Include Passcode ID and Assigned Delegate ID (UUID) for easy programmatic use
+      let csv = "Passcode ID,Display Name,Committee,Role,Created At,Expires At,Assigned ID,Assigned Name,Assigned At,Revoked,Is Persistent\n";
       passcodes.forEach((p) => {
         const c = committees.find((c) => c.id === p.committee_id);
         const assigned = delegates.find((d) => d.id === p.assigned_user_id);
-        csv += `"${p.id}","${p.display_name || ""}","${c?.short_name || ""}","${p.role}","${p.created_at || ""}","${p.expires_at || ""}","${assigned?.display_name || ""}","${p.assigned_at || ""}","${p.revoked}","${p.is_persistent}"\n`;
+        csv += `"${p.id}","${p.display_name || ""}","${c?.short_name || ""}","${p.role}","${p.created_at || ""}","${p.expires_at || ""}","${p.assigned_user_id || ""}","${assigned?.display_name || ""}","${p.assigned_at || ""}","${p.revoked}","${p.is_persistent}"\n`;
       });
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
