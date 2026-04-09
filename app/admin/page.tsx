@@ -166,15 +166,45 @@ export default function AdminPage() {
   }
 
   async function deleteDelegate(delegateId: string) {
-    if (!confirm("Remove this delegate? This is irreversible.")) return;
-    const { error } = await supabase
-      .from("delegates")
-      .delete()
-      .eq("id", delegateId);
-    if (error) toast.error(error.message);
-    else {
-      toast.success("Delegate removed");
-      loadAll();
+    try {
+      // Fetch the delegate to inspect role
+      const { data: delegate, error: fetchErr } = await supabase
+        .from("delegates")
+        .select("id,display_name,role")
+        .eq("id", delegateId)
+        .maybeSingle();
+      if (fetchErr || !delegate) return toast.error("Delegate not found");
+
+      if (delegate.role === "admin") {
+        // Count admins to avoid deleting the last admin
+        const { count: adminCount, error: countErr } = await supabase
+          .from("delegates")
+          .select("id", { count: "exact" })
+          .eq("role", "admin");
+        if (countErr) return toast.error("Failed to verify admin count");
+        if ((adminCount || 0) <= 1) {
+          return toast.error("Cannot delete the last admin account. Create another admin first.");
+        }
+
+        const prompt = window.prompt(
+          `You are deleting admin '${delegate.display_name}'. Type DELETE ADMIN to confirm:`,
+        );
+        if (prompt !== "DELETE ADMIN") return toast.error("Admin deletion cancelled");
+      } else {
+        if (!confirm("Remove this delegate? This is irreversible.")) return;
+      }
+
+      const { error } = await supabase
+        .from("delegates")
+        .delete()
+        .eq("id", delegateId);
+      if (error) toast.error(error.message);
+      else {
+        toast.success("Delegate removed");
+        loadAll();
+      }
+    } catch (err: any) {
+      toast.error(err?.message || String(err));
     }
   }
 
@@ -307,19 +337,22 @@ export default function AdminPage() {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         if (!currentSession) throw new Error("Not authenticated");
 
-        const res = await fetch("/api/admin/passcodes/create", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${currentSession.access_token}`,
-          },
-          body: JSON.stringify({
-            committeeId: pcCommitteeId,
-            displayName: pcDisplayName,
-            passcode: pcPasscode || undefined,
-            role: pcRole,
-          }),
-        });
+          // if pcPasscode is blank, autogenerate using committee prefix (DISEC1, DISEC2...)
+          const passcodeToSend = pcPasscode && pcPasscode.trim().length > 0 ? pcPasscode.trim().toUpperCase() : generateSequentialPasscodeForCommittee(pcCommitteeId);
+
+          const res = await fetch("/api/admin/passcodes/create", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${currentSession.access_token}`,
+            },
+            body: JSON.stringify({
+              committeeId: pcCommitteeId,
+              displayName: pcDisplayName,
+              passcode: passcodeToSend,
+              role: pcRole,
+            }),
+          });
 
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Failed to create passcode");
@@ -363,6 +396,22 @@ export default function AdminPage() {
         setIsLoadingPasscodes(false);
       }
     }, [supabase]);
+
+    function generateSequentialPasscodeForCommittee(committeeId: string) {
+      const committee = committees.find((c) => c.id === committeeId);
+      const prefix = (committee?.short_name || "CMT").replace(/\s+/g, "").toUpperCase();
+      // Find existing passcodes for this committee and extract numeric suffixes
+      const existing = passcodes.filter((p) => p.committee_id === committeeId && typeof p.display_name === "string");
+      const suffixes = existing
+        .map((p) => {
+          // match patterns like PREFIX123 or PREFIX1
+          const m = (p.display_name || "").toUpperCase().match(new RegExp(`${prefix}(\\d+)$`));
+          return m ? parseInt(m[1], 10) : null;
+        })
+        .filter((n) => !!n) as number[];
+      const next = (suffixes.length ? Math.max(...suffixes) : 0) + 1;
+      return `${prefix}${next}`;
+    }
 
     useEffect(() => {
       fetchPasscodes();
@@ -785,9 +834,19 @@ export default function AdminPage() {
                   animate={{ opacity: 1, height: "auto" }}
                   className="mb-8 p-6 rounded-2xl bg-white/5 border border-white/10 space-y-6"
                 >
+                  <div className="p-3 rounded-md bg-black/20 border border-white/5">
+                    <h4 className="text-sm font-bold mb-1">How passcode generation works (simple steps)</h4>
+                    <ol className="text-xs list-decimal list-inside text-white/60">
+                      <li>Select the committee the delegate belongs to.</li>
+                      <li>Enter the delegation name (e.g. Republic of India).</li>
+                      <li>Leave the passcode blank to auto-generate a sequential code for that committee (e.g. DISEC1, DISEC2) or enter a custom code.</li>
+                      <li>Click "Generate Passcode" — the new code will be shown and copied to your clipboard when possible.</li>
+                      <li>Share the code with the delegate; they use it on the Join page to claim their seat.</li>
+                    </ol>
+                  </div>
                   <div className="flex items-center gap-3 mb-2">
                     <Key size={18} className="text-amber-400" />
-                    <h3 className="text-sm font-bold uppercase tracking-wider">Create Delegate Passcode</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Generate Delegate Passcode</h3>
                   </div>
 
                   <form onSubmit={createPasscode} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -807,8 +866,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Passcode (optional)</label>
-                      <input className="input-field text-xs bg-black/40 border-white/10 w-full font-mono tracking-widest" placeholder="Leave blank to auto-generate" value={pcPasscode} onChange={e => setPcPasscode(e.target.value.toUpperCase())} />
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Generated Delegate Passcode (optional override)</label>
+                      <input className="input-field text-xs bg-black/40 border-white/10 w-full font-mono tracking-widest" placeholder="Leave blank to auto-generate (e.g. DISEC1)" value={pcPasscode} onChange={e => setPcPasscode(e.target.value.toUpperCase())} />
+                      <p className="text-xs text-white/40">If left blank, the system will autogenerate sequential codes per committee (e.g. DISEC1, DISEC2, ...).</p>
                     </div>
 
                     <div className="space-y-2">
