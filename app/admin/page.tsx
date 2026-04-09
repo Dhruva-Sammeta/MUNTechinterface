@@ -10,22 +10,12 @@ import {
   Tabs,
 } from "@/components/ui/shared";
 import {
-  Diamond,
-  LayoutDashboard,
-  Users,
-  Megaphone,
-  Download,
-  Settings,
-  Shield,
-  Globe,
-  Send,
-  Trash2,
-  Edit2,
-  Check,
-  AlertTriangle,
   MonitorSmartphone,
   Search,
+  UserPlus,
+  ShieldAlert,
 } from "lucide-react";
+import { countryFlag } from "@/lib/countryFlag";
 import type {
   Committee,
   Delegate,
@@ -48,6 +38,16 @@ export default function AdminPage() {
   // Role editor
   const [editingDelegate, setEditingDelegate] = useState<string | null>(null);
   const [editRole, setEditRole] = useState("");
+
+  // Registration form
+  const [newDelEmail, setNewDelEmail] = useState("");
+  const [newDelPassword, setNewDelPassword] = useState("");
+  const [newDelName, setNewDelName] = useState("");
+  const [newDelCountry, setNewDelCountry] = useState("");
+  const [newDelCommitteeId, setNewDelCommitteeId] = useState("");
+  const [newDelRole, setNewDelRole] = useState("delegate");
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [showRegForm, setShowRegForm] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -222,6 +222,54 @@ export default function AdminPage() {
       else toast.error(data.error || "Failed to trigger sync");
     } catch (e: any) {
       toast.error(e.message);
+    }
+  }
+
+  async function registerDelegate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newDelEmail || !newDelPassword || !newDelName || !newDelCommitteeId) {
+      return toast.error("Missing required fields");
+    }
+
+    setIsRegistering(true);
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) throw new Error("Not authenticated");
+
+      const res = await fetch("/api/admin/create-delegate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${currentSession.access_token}`,
+        },
+        body: JSON.stringify({
+          email: newDelEmail,
+          password: newDelPassword,
+          displayName: newDelName,
+          country: newDelCountry || newDelName,
+          committeeId: newDelCommitteeId,
+          role: newDelRole,
+        }),
+      });
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to register delegate");
+
+      toast.success("Delegate registered successfully");
+      setShowRegForm(false);
+      // Reset form
+      setNewDelEmail("");
+      setNewDelPassword("");
+      setNewDelName("");
+      setNewDelCountry("");
+      setNewDelCommitteeId("");
+      setNewDelRole("delegate");
+      
+      loadAll();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setIsRegistering(false);
     }
   }
 
@@ -408,20 +456,127 @@ export default function AdminPage() {
                   title="All Delegates"
                   subtitle="Manage roles across committees"
                 />
-                <div className="relative w-full sm:w-64">
-                  <Search
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Search name, country..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-black/30 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs outline-none focus:border-cyan-500/50 transition-colors"
-                  />
+                <div className="flex items-center gap-3">
+                  <div className="relative w-full sm:w-64">
+                    <Search
+                      size={14}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Search name, country..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-black/30 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs outline-none focus:border-cyan-500/50 transition-colors"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => setShowRegForm(!showRegForm)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      showRegForm 
+                        ? "bg-red-500/20 text-red-400 border border-red-500/30" 
+                        : "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
+                    }`}
+                  >
+                    {showRegForm ? "Cancel" : <><UserPlus size={14} /> Register New</>}
+                  </button>
                 </div>
               </div>
+
+              {showRegForm && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  className="mb-8 p-6 rounded-2xl bg-white/5 border border-white/10 space-y-6"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <ShieldAlert size={18} className="text-amber-400" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Secure Registration</h3>
+                  </div>
+                  
+                  <form onSubmit={registerDelegate} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Account Email</label>
+                      <input 
+                        className="input-field text-xs bg-black/40 border-white/10 w-full" 
+                        placeholder="delegate@example.com"
+                        type="email"
+                        required
+                        value={newDelEmail}
+                        onChange={e => setNewDelEmail(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Password</label>
+                      <input 
+                        className="input-field text-xs bg-black/40 border-white/10 w-full" 
+                        placeholder="Min 6 characters"
+                        type="password"
+                        required
+                        minLength={6}
+                        value={newDelPassword}
+                        onChange={e => setNewDelPassword(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Delegation Name</label>
+                      <input 
+                        className="input-field text-xs bg-black/40 border-white/10 w-full" 
+                        placeholder="e.g. Republic of India"
+                        required
+                        value={newDelName}
+                        onChange={e => setNewDelName(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Country Alias (Optional)</label>
+                      <input 
+                        className="input-field text-xs bg-black/40 border-white/10 w-full" 
+                        placeholder="e.g. India"
+                        value={newDelCountry}
+                        onChange={e => setNewDelCountry(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Committee</label>
+                      <select 
+                        className="input-field text-xs bg-black/40 border-white/10 w-full"
+                        required
+                        value={newDelCommitteeId}
+                        onChange={e => setNewDelCommitteeId(e.target.value)}
+                      >
+                        <option value="">Select Committee</option>
+                        {committees.map(c => (
+                          <option key={c.id} value={c.id}>{c.name} ({c.short_name})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Role Authority</label>
+                      <select 
+                        className="input-field text-xs bg-black/40 border-white/10 w-full"
+                        required
+                        value={newDelRole}
+                        onChange={e => setNewDelRole(e.target.value)}
+                      >
+                        <option value="delegate">Delegate</option>
+                        <option value="eb">Executive Board (EB)</option>
+                        <option value="presentation">Presentation Screen</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2 lg:col-span-3 pt-2">
+                      <button 
+                        type="submit" 
+                        disabled={isRegistering}
+                        className="w-full btn-primary py-3 font-bold tracking-widest uppercase hover:shadow-[0_0_20px_rgba(10,132,255,0.3)]"
+                      >
+                        {isRegistering ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Confirm and Create Account"}
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              )}
 
               <div className="overflow-x-auto custom-scrollbar">
                 <table className="w-full text-sm">
@@ -482,7 +637,10 @@ export default function AdminPage() {
                             className="py-2.5 px-3 text-xs"
                             style={{ color: "var(--color-text-secondary)" }}
                           >
-                            {d.country || "—"}
+                            <span className="flex items-center gap-2">
+                              <span className="text-base">{countryFlag(d.country || d.display_name)}</span>
+                              {d.country || "—"}
+                            </span>
                           </td>
                           <td className="py-2.5 px-3 whitespace-nowrap">
                             <span className="text-[10px] font-bold px-2 py-1 rounded-md bg-black/40 border border-white/5">

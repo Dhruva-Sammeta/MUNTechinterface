@@ -54,44 +54,7 @@ import type {
 import { toast } from "sonner";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 
-function countryFlag(name: string): string {
-  const MAP: Record<string, string> = {
-    france: "🇫🇷",
-    "french republic": "🇫🇷",
-    germany: "🇩🇪",
-    india: "🇮🇳",
-    "republic of india": "🇮🇳",
-    "united states": "🇺🇸",
-    usa: "🇺🇸",
-    "united kingdom": "🇬🇧",
-    uk: "🇬🇧",
-    china: "🇨🇳",
-    russia: "🇷🇺",
-    "russian federation": "🇷🇺",
-    japan: "🇯🇵",
-    brazil: "🇧🇷",
-    "south africa": "🇿🇦",
-    australia: "🇦🇺",
-    canada: "🇨🇦",
-    mexico: "🇲🇽",
-    egypt: "🇪🇬",
-    nigeria: "🇳🇬",
-    "saudi arabia": "🇸🇦",
-    pakistan: "🇵🇰",
-    turkey: "🇹🇷",
-    indonesia: "🇮🇩",
-    "south korea": "🇰🇷",
-    italy: "🇮🇹",
-    spain: "🇪🇸",
-    argentina: "🇦🇷",
-    israel: "🇮🇱",
-    iran: "🇮🇷",
-    secretariat: "🏛️",
-    "test nation": "🏳️",
-    admin: "🏛️",
-  };
-  return MAP[name.toLowerCase()] || "🏳️";
-}
+import { countryFlag } from "@/lib/countryFlag";
 
 type Tab =
   | "dashboard"
