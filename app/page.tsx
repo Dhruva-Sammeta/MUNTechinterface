@@ -399,10 +399,19 @@ export default function LoginPage() {
           </AnimatePresence>
 
           {/* Footer note */}
-          <p className="text-center text-[10px] text-blue-200/20 mt-6 relative">
-            Join your committee via join code first, then elevate access in
-            settings.
-          </p>
+          <div className="mt-8 pt-6 border-t border-white/5 space-y-4 relative">
+            <p className="text-center text-[10px] text-blue-200/20 uppercase tracking-widest font-medium">
+              Join via committee code · Elevate access in settings
+            </p>
+            <div className="flex flex-col items-center gap-1.5 pt-2">
+              <p className="text-[10px] text-white/10 font-medium tracking-wider">
+                Credits: <span className="text-white/20">Dhruva Sammeta</span>
+              </p>
+              <p className="text-[9px] text-white/5 tracking-[0.2em] uppercase">
+                All rights reserved, Sapphire MUN
+              </p>
+            </div>
+          </div>
         </div>
       </motion.div>
     </div>

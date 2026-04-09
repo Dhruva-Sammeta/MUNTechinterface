@@ -865,6 +865,15 @@ export default function AdminPage() {
           </div>
         )}
       </main>
+
+      <footer className="px-6 py-4 border-t border-white/5 flex items-center justify-between opacity-30">
+        <p className="text-[10px] font-bold uppercase tracking-widest">
+          Credits: Dhruva Sammeta
+        </p>
+        <p className="text-[9px] uppercase tracking-[0.2em]">
+          All rights reserved, Sapphire MUN
+        </p>
+      </footer>
     </div>
   );
 }

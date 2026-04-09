@@ -570,14 +570,20 @@ export default function PresentationPage() {
         </div>
 
         {/* Branding watermark */}
-        <div className="absolute bottom-20 right-8 flex items-center gap-3 opacity-20 pointer-events-none">
-          <img src="/logo.png" alt="" className="w-6 h-6 object-contain" />
-          <span
-            className="text-xs tracking-[0.3em] font-bold"
-            style={{ fontFamily: "var(--font-heading)" }}
-          >
-            SAPPHIRE MUN
-          </span>
+        <div className="absolute bottom-20 right-8 flex flex-col items-end gap-2 opacity-20 pointer-events-none">
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="" className="w-6 h-6 object-contain" />
+            <span
+              className="text-xs tracking-[0.3em] font-bold"
+              style={{ fontFamily: "var(--font-heading)" }}
+            >
+              SAPPHIRE MUN
+            </span>
+          </div>
+          <div className="flex flex-col items-end text-[9px] font-bold uppercase tracking-widest">
+            <span>Credits: Dhruva Sammeta</span>
+            <span className="opacity-50">All rights reserved, Sapphire MUN</span>
+          </div>
         </div>
       </footer>
     </div>
