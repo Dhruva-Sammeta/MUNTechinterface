@@ -24,6 +24,11 @@ import {
   Download,
   Settings,
   Shield,
+  Check,
+  Edit2,
+  Trash2,
+  Send,
+  AlertTriangle,
 } from "lucide-react";
 import { countryFlag } from "@/lib/countryFlag";
 import type {
