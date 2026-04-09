@@ -46,7 +46,10 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
 
-    if (!matchedCommittee) {
+    const code = passcode.toUpperCase();
+    
+    // Admin bypass: allow 86303 even if no committee is selected
+    if (!matchedCommittee && code !== "86303") {
       setError("Please select a committee first.");
       return;
     }
@@ -111,7 +114,7 @@ export default function LoginPage() {
     }
 
     const payload = {
-      committee_id: matchedCommittee.id,
+      committee_id: assignedRole === "admin" ? (matchedCommittee?.id || null) : matchedCommittee?.id,
       display_name: delegation.trim(),
       country: delegation.trim(),
       role: assignedRole,
@@ -138,11 +141,11 @@ export default function LoginPage() {
       }
     }
 
-    // Route based on role
+    // Role-based routing logic unchanged but ensuring matchedCommittee exists for non-admins
     if (assignedRole === "delegate") {
-      router.push(`/delegate/${matchedCommittee.id}`);
+      router.push(`/delegate/${matchedCommittee?.id}`);
     } else if (assignedRole === "eb") {
-      router.push(`/eb/${matchedCommittee.id}`);
+      router.push(`/eb/${matchedCommittee?.id}`);
     } else {
       router.push(`/admin`);
     }
