@@ -316,6 +316,14 @@ export default function LoginPage() {
                   <p className="w-full text-center text-[10px] text-cyan-400/60 uppercase tracking-widest font-semibold">
                     Select a committee to continue
                   </p>
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={() => router.push("/admin")}
+                      className="text-[10px] text-white/5 hover:text-cyan-400/40 transition-colors uppercase tracking-[0.2em] font-medium"
+                    >
+                      Secretariat Admin
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             ) : step === "passcode" ? (
