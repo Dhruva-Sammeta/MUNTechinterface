@@ -1111,15 +1111,10 @@ export default function DelegatePage() {
             </button>
           </div>
           <div
-            className="text-right hidden sm:block"
+            className="text-right hidden sm:block text-[9px] uppercase tracking-[0.2em] opacity-20"
             style={{ color: "var(--color-text-muted)" }}
           >
-            <div className="text-[10px] uppercase tracking-wider font-bold opacity-30">
-              Credits: Dhruva Sammeta
-            </div>
-            <div className="text-[9px] opacity-20 uppercase tracking-widest mt-0.5">
-              {presentCount}/{totalDelegates} present · All rights reserved, Sapphire MUN
-            </div>
+            {presentCount}/{totalDelegates} present · SAPPHIRE MUN
           </div>
         </footer>
       </div>

@@ -580,10 +580,6 @@ export default function PresentationPage() {
               SAPPHIRE MUN
             </span>
           </div>
-          <div className="flex flex-col items-end text-[9px] font-bold uppercase tracking-widest">
-            <span>Credits: Dhruva Sammeta</span>
-            <span className="opacity-50">All rights reserved, Sapphire MUN</span>
-          </div>
         </div>
       </footer>
     </div>

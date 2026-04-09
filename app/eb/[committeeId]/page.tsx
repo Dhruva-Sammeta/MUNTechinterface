@@ -385,14 +385,6 @@ export default function EBPage() {
             <Settings size={16} />{" "}
             <span className="sidebar-label">Committee Settings</span>
           </button>
-          <div className="credits-section opacity-30 mt-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest">
-              Credits: Dhruva Sammeta
-            </p>
-            <p className="text-[9px] uppercase tracking-[0.2em]">
-              All rights reserved, Sapphire MUN
-            </p>
-          </div>
         </div>
       </aside>
 
@@ -1000,6 +992,8 @@ export default function EBPage() {
         />
       )}
     </main>
+      </div>
+    </div>
   );
 }
 
