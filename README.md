@@ -47,7 +47,7 @@ It is not intended for public reuse, modification, or redistribution without exp
 
 **All rights reserved.**
 
-Copyright © Sapphire Tech. All rights reserved.
+Copyright pending © Sapphire MUN All rights reserved.
 
 This repository and its contents are the intellectual property of Sapphire Tech.
 
