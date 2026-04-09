@@ -20,17 +20,73 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Learn More
+## Lisencing
+# Sapphire Tech Interface V2
 
-To learn more about Next.js, take a look at the following resources:
+## Overview
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Sapphire Tech Interface V2 is a redesigned and expanded system focused on modular control, scalable architecture, and high-performance execution across hardware and software environments.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This version introduces improved system abstraction, tighter integration capabilities, and a foundation for future commercial deployment.
 
-## Deploy on Vercel
+## Key Features
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+* Modular system architecture for extensibility
+* Improved performance and resource management
+* Scalable design for multi-device and multi-context operation
+* Enhanced interface layer for hardware interaction
+* Built for real-world deployment, not experimental use
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Intended Use
+
+This software is developed for controlled environments, internal development, and future licensed distribution.
+
+It is not intended for public reuse, modification, or redistribution without explicit authorization.
+
+## License and Usage Restrictions
+
+**All rights reserved.**
+
+Copyright © Sapphire Tech. All rights reserved.
+
+This repository and its contents are the intellectual property of Sapphire Tech.
+
+You are not permitted to:
+
+* copy or reproduce this codebase
+* modify or create derivative works
+* distribute, sublicense, or share any portion of this project
+* use this software for personal, academic, or commercial purposes
+
+without prior written permission from Sapphire Tech.
+
+## Commercialization Notice
+
+Sapphire Tech Interface V2 is being actively developed for commercial licensing and deployment.
+
+Access to this system will be provided only through:
+
+* officially licensed distributions
+* authorized partnerships
+* controlled release channels
+
+Any unauthorized usage will be treated as a violation of intellectual property rights.
+
+## Access Requests
+
+For licensing, collaboration, or commercial inquiries, contact:
+
+**[dhruva.sammeta10@gmail.com](mailto:dhruva.sammeta10@gmail.com)**
+
+## Disclaimer
+
+This software is provided in a controlled state and may evolve rapidly. No guarantees are made regarding stability, completeness, or backward compatibility at this stage.
+
+## Status
+
+Active development.
+
+Not open source.
+Not for public use.
+
+
