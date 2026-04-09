@@ -30,6 +30,7 @@ import {
   Send,
   AlertTriangle,
   Key,
+  Copy,
 } from "lucide-react";
 import { countryFlag } from "@/lib/countryFlag";
 import type {
@@ -194,15 +195,23 @@ export default function AdminPage() {
         if (!confirm("Remove this delegate? This is irreversible.")) return;
       }
 
-      const { error } = await supabase
-        .from("delegates")
-        .delete()
-        .eq("id", delegateId);
-      if (error) toast.error(error.message);
-      else {
-        toast.success("Delegate removed");
-        loadAll();
-      }
+      // Call server-side deletion endpoint (server enforces last-admin protection)
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return toast.error("Not authenticated");
+
+      const res = await fetch("/api/admin/delete-delegate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ delegateId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to delete delegate");
+      toast.success("Delegate removed");
+      loadAll();
     } catch (err: any) {
       toast.error(err?.message || String(err));
     }
@@ -883,7 +892,23 @@ export default function AdminPage() {
                       <div className="flex gap-2">
                         <button type="submit" disabled={isCreatingPasscode} className="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-400 font-bold">{isCreatingPasscode ? "Creating…" : "Create Passcode"}</button>
                         {generatedPasscode && (
-                          <div className="ml-2 px-3 py-2 rounded-lg bg-black/20 border border-white/5 font-mono tracking-widest">{generatedPasscode}</div>
+                          <div className="ml-2 flex items-center gap-2">
+                            <div className="px-3 py-2 rounded-lg bg-black/20 border border-white/5 font-mono tracking-widest">{generatedPasscode}</div>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(generatedPasscode);
+                                  toast.success("Passcode copied to clipboard");
+                                } catch (e: any) {
+                                  toast.error("Copy failed");
+                                }
+                              }}
+                              className="px-2 py-1 rounded bg-white/5 text-xs"
+                              title="Copy passcode"
+                            >
+                              <Copy size={14} />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
