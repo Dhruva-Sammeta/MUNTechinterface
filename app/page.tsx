@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
+  const [passcodeInfo, setPasscodeInfo] = useState<any>(null);
 
   // Initial load of committees
   useEffect(() => {
@@ -70,6 +71,7 @@ export default function LoginPage() {
         body: JSON.stringify({ code, committeeJoinCode: matchedCommittee.join_code }),
       });
       const data = await res.json();
+      setPasscodeInfo(data);
       if (res.ok && data?.valid) {
         setStep("delegation");
       } else {
@@ -118,17 +120,41 @@ export default function LoginPage() {
       .eq("user_id", uid)
       .maybeSingle();
 
-    // Determine role based on passcode using server-side verification
+    // If passcode is an admin-created, per-delegate code, redeem it server-side
     let assignedRole = "delegate";
     try {
-      const res = await fetch("/api/verify-passcode", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: passcode.toUpperCase(), committeeJoinCode: matchedCommittee.join_code }),
-      });
-      const data = await res.json();
-      if (res.ok && data?.valid) {
-        assignedRole = data.role || "delegate";
+      if (passcodeInfo?.assigned && passcodeInfo?.passcodeId) {
+        // Get session token for anonymous user
+        const { data: { session } } = await sb.auth.getSession();
+        const token = session?.access_token;
+        if (token) {
+          const claimRes = await fetch("/api/passcodes/claim", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ code: passcode.toUpperCase(), committeeJoinCode: matchedCommittee.join_code, displayName: delegation.trim() }),
+          });
+          const claimData = await claimRes.json();
+          if (claimRes.ok && claimData?.success) {
+            assignedRole = claimData.role || "delegate";
+          } else {
+            // Fallback to verification-only role if claim failed
+            const vRes = await fetch("/api/verify-passcode", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code: passcode.toUpperCase(), committeeJoinCode: matchedCommittee.join_code }),
+            });
+            const vData = await vRes.json();
+            if (vRes.ok && vData?.valid) assignedRole = vData.role || "delegate";
+          }
+        }
+      } else {
+        const res = await fetch("/api/verify-passcode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: passcode.toUpperCase(), committeeJoinCode: matchedCommittee.join_code }),
+        });
+        const data = await res.json();
+        if (res.ok && data?.valid) assignedRole = data.role || "delegate";
       }
     } catch (err) {
       // keep assignedRole as delegate on failure

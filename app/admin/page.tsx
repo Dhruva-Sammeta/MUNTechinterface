@@ -29,6 +29,7 @@ import {
   Trash2,
   Send,
   AlertTriangle,
+  Key,
 } from "lucide-react";
 import { countryFlag } from "@/lib/countryFlag";
 import type {
@@ -63,6 +64,15 @@ export default function AdminPage() {
   const [newDelRole, setNewDelRole] = useState("delegate");
   const [isRegistering, setIsRegistering] = useState(false);
   const [showRegForm, setShowRegForm] = useState(false);
+
+  // Passcode creation UI
+  const [showPasscodeForm, setShowPasscodeForm] = useState(false);
+  const [pcCommitteeId, setPcCommitteeId] = useState("");
+  const [pcDisplayName, setPcDisplayName] = useState("");
+  const [pcPasscode, setPcPasscode] = useState("");
+  const [pcRole, setPcRole] = useState("delegate");
+  const [generatedPasscode, setGeneratedPasscode] = useState<string | null>(null);
+  const [isCreatingPasscode, setIsCreatingPasscode] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -288,6 +298,46 @@ export default function AdminPage() {
     }
   }
 
+    async function createPasscode(e: React.FormEvent) {
+      e.preventDefault();
+      if (!pcCommitteeId || !pcDisplayName) return toast.error("Missing required fields");
+      setIsCreatingPasscode(true);
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!currentSession) throw new Error("Not authenticated");
+
+        const res = await fetch("/api/admin/passcodes/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${currentSession.access_token}`,
+          },
+          body: JSON.stringify({
+            committeeId: pcCommitteeId,
+            displayName: pcDisplayName,
+            passcode: pcPasscode || undefined,
+            role: pcRole,
+          }),
+        });
+
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to create passcode");
+
+        setGeneratedPasscode(json.passcode);
+        setShowPasscodeForm(false);
+        setPcCommitteeId("");
+        setPcDisplayName("");
+        setPcPasscode("");
+        setPcRole("delegate");
+        toast.success("Passcode created — copy and share with delegate");
+        loadAll();
+      } catch (err: any) {
+        toast.error(err.message);
+      } finally {
+        setIsCreatingPasscode(false);
+      }
+    }
+
   const tabs = [
     { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
     {
@@ -495,6 +545,16 @@ export default function AdminPage() {
                   >
                     {showRegForm ? "Cancel" : <><UserPlus size={14} /> Register New</>}
                   </button>
+                  <button
+                    onClick={() => setShowPasscodeForm(!showPasscodeForm)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      showPasscodeForm
+                        ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                        : "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                    }`}
+                  >
+                    {showPasscodeForm ? "Cancel" : <><Key size={14} /> Create Passcode</>}
+                  </button>
                 </div>
               </div>
 
@@ -588,6 +648,58 @@ export default function AdminPage() {
                       >
                         {isRegistering ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Confirm and Create Account"}
                       </button>
+                    </div>
+                  </form>
+                </motion.div>
+              )}
+
+              {showPasscodeForm && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  className="mb-8 p-6 rounded-2xl bg-white/5 border border-white/10 space-y-6"
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <Key size={18} className="text-amber-400" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Create Delegate Passcode</h3>
+                  </div>
+
+                  <form onSubmit={createPasscode} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Committee</label>
+                      <select className="input-field text-xs bg-black/40 border-white/10 w-full" required value={pcCommitteeId} onChange={(e) => setPcCommitteeId(e.target.value)}>
+                        <option value="">Select committee</option>
+                        {committees.map((c) => (
+                          <option key={c.id} value={c.id}>{c.short_name} — {c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Delegation Name</label>
+                      <input className="input-field text-xs bg-black/40 border-white/10 w-full" placeholder="e.g. Republic of India" required value={pcDisplayName} onChange={e => setPcDisplayName(e.target.value)} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Passcode (optional)</label>
+                      <input className="input-field text-xs bg-black/40 border-white/10 w-full font-mono tracking-widest" placeholder="Leave blank to auto-generate" value={pcPasscode} onChange={e => setPcPasscode(e.target.value.toUpperCase())} />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Role</label>
+                      <select className="input-field text-xs bg-black/40 border-white/10 w-full" value={pcRole} onChange={(e) => setPcRole(e.target.value)}>
+                        <option value="delegate">delegate</option>
+                        <option value="eb">eb</option>
+                      </select>
+                    </div>
+
+                    <div className="col-span-3">
+                      <div className="flex gap-2">
+                        <button type="submit" disabled={isCreatingPasscode} className="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-400 font-bold">{isCreatingPasscode ? "Creating…" : "Create Passcode"}</button>
+                        {generatedPasscode && (
+                          <div className="ml-2 px-3 py-2 rounded-lg bg-black/20 border border-white/5 font-mono tracking-widest">{generatedPasscode}</div>
+                        )}
+                      </div>
                     </div>
                   </form>
                 </motion.div>
