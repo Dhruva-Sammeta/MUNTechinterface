@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Committee } from "@/lib/database.types";
+import { verifyPasscode } from "@/app/actions/auth";
 
 // Authentication is strictly hierarchical: Start as delegate, then escalate.
 
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
+  const [verifiedRole, setVerifiedRole] = useState<string | null>(null);
 
   // Initial load of committees
   useEffect(() => {
@@ -42,27 +44,26 @@ export default function LoginPage() {
   }, [passcode]);
 
   // ── Step 1: Validate passcode ─────────────────────────────────────────────
-  function handlePasscodeSubmit(e: React.FormEvent) {
+  async function handlePasscodeSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!passcode.trim()) return;
+    
+    setLoading(true);
     setError("");
 
-    const code = passcode.toUpperCase();
-    
-    // Admin bypass: allow 86303 even if no committee is selected
-    if (!matchedCommittee && code !== "86303") {
-      setError("Please select a committee first.");
-      return;
-    }
-
-    const code = passcode.toUpperCase();
-    if (
-      code === matchedCommittee.join_code ||
-      code === `${matchedCommittee.join_code}_EB` ||
-      code === "86303"
-    ) {
-      setStep("delegation");
-    } else {
-      setError("Invalid passcode. Enter your committee join code, EB code, or Admin code.");
+    try {
+      const role = await verifyPasscode(passcode, matchedCommittee?.id);
+      
+      if (role) {
+        setVerifiedRole(role);
+        setStep("delegation");
+      } else {
+        setError("Invalid passcode. Enter your committee join code, EB code, or Admin code.");
+      }
+    } catch (err: any) {
+      setError("Verification failed: " + err.message);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -104,14 +105,8 @@ export default function LoginPage() {
       .eq("user_id", uid)
       .maybeSingle();
 
-    // Determine role based on passcode used
-    let assignedRole = "delegate";
-    const code = passcode.toUpperCase();
-    if (code === "86303") {
-      assignedRole = "admin";
-    } else if (code === `${matchedCommittee.join_code}_EB`) {
-      assignedRole = "eb";
-    }
+    // Determine role based on previously verified passcode
+    const assignedRole = verifiedRole || "delegate";
 
     const payload = {
       committee_id: assignedRole === "admin" ? (matchedCommittee?.id || null) : matchedCommittee?.id,
