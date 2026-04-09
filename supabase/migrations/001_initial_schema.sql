@@ -744,6 +744,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.blocs;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.bloc_members;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.global_announcements;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.attendance;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.delegates;
 
 
 -- ============================================================

@@ -23,7 +23,7 @@ export function useSession(sessionId: string | null) {
         .from("sessions")
         .select("*")
         .eq("id", sessionId)
-        .single();
+        .maybeSingle();
       if (data) {
         setCurrentSession(data as Session);
         setMode(data.mode as SessionMode);

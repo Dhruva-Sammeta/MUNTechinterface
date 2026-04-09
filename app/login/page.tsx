@@ -42,7 +42,7 @@ export default function LoginPage() {
         .from("delegates")
         .select("role, committee_id")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
       if (delegate?.role === "admin") {
         router.push("/admin");

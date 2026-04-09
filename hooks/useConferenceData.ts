@@ -184,7 +184,7 @@ export function useConferenceData(committeeId: string): ConferenceData {
           .select("*")
           .eq("voting_round_id", roundId)
           .eq("delegate_id", del.id)
-          .single();
+          .maybeSingle();
         setMyVote(mv as VoteType | null);
       }
     },
@@ -236,8 +236,8 @@ export function useConferenceData(committeeId: string): ConferenceData {
 
       // Fetch committee + delegate in parallel
       const [cRes, dRes] = await Promise.all([
-        supabase.from("committees").select("*").eq("id", committeeId).single(),
-        supabase.from("delegates").select("*").eq("user_id", user.id).single(),
+        supabase.from("committees").select("*").eq("id", committeeId).maybeSingle(),
+        supabase.from("delegates").select("*").eq("user_id", user.id).maybeSingle(),
       ]);
 
       if (cancelled) return;
@@ -260,7 +260,7 @@ export function useConferenceData(committeeId: string): ConferenceData {
         .select("*")
         .eq("committee_id", committeeId)
         .eq("date", today)
-        .single();
+        .maybeSingle();
 
       // If EB/admin and no session exists, auto-create
       if (
@@ -272,7 +272,7 @@ export function useConferenceData(committeeId: string): ConferenceData {
           .from("sessions")
           .insert({ committee_id: committeeId, date: today })
           .select()
-          .single();
+          .maybeSingle();
         sess = newSess;
       }
 
@@ -306,128 +306,167 @@ export function useConferenceData(committeeId: string): ConferenceData {
   // ── Realtime subscriptions ──────────────────────────────────────────────
 
   useEffect(() => {
-    if (!session?.id) return;
+    // Always create a channel to avoid showing "Reconnecting..." falsely,
+    // and to listen for session creation if one doesn't exist yet!
+    const channelName = session?.id 
+      ? `conference_data:${session.id}` 
+      : `conference_data_waiting:${committeeId}`;
 
-    // Fetch fresh session to snap timer immediately on subscribe
-    async function refetchSession() {
-      const { data } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("id", session!.id)
-        .single();
-      if (data) {
-        const s = data as Session;
-        setSession(s);
-        setCurrentSession(s);
-        setMode(s.mode as SessionMode);
+    const channel = supabase.channel(channelName);
+
+    if (session?.id) {
+      // 1. We have an active session — subscribe to all session-scoped events
+      channel
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "sessions",
+            filter: `id=eq.${session.id}`,
+          },
+          (payload) => {
+            const newSession = payload.new as Session;
+            setSession(newSession);
+            setCurrentSession(newSession);
+            setMode(newSession.mode as SessionMode);
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "chits",
+            filter: `session_id=eq.${session.id}`,
+          },
+          () => refetchChits(),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "documents",
+            filter: `committee_id=eq.${committeeId}`,
+          },
+          () => refetchDocuments(),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "voting_rounds",
+            filter: `session_id=eq.${session.id}`,
+          },
+          () => refetchVotingRounds(),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "votes",
+            filter: `session_id=eq.${session.id}`,
+          },
+          () => {
+            if (activeRound) refetchVoteTally(activeRound.id);
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "delegates",
+            filter: `committee_id=eq.${committeeId}`,
+          },
+          () => refetchDelegates(),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "blocs",
+            filter: `session_id=eq.${session.id}`,
+          },
+          () => refetchBlocs(),
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "bloc_members",
+          },
+          () => refetchBlocs(),
+        );
+
+      // Fetch fresh session to snap timer immediately on subscribe
+      async function refetchSession() {
+        const { data } = await supabase
+          .from("sessions")
+          .select("*")
+          .eq("id", session!.id)
+          .maybeSingle();
+        if (data) {
+          const s = data as Session;
+          setSession(s);
+          setCurrentSession(s);
+          setMode(s.mode as SessionMode);
+        }
       }
-    }
 
-    const channel = supabase
-      .channel(`conference_data:${session.id}`)
-      // Session changes (mode, timer, agenda)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "sessions",
-          filter: `id=eq.${session.id}`,
-        },
-        (payload) => {
-          const newSession = payload.new as Session;
-          setSession(newSession);
-          setCurrentSession(newSession);
-          setMode(newSession.mode as SessionMode);
-        },
-      )
-      // Chit changes
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "chits",
-          filter: `session_id=eq.${session.id}`,
-        },
-        () => refetchChits(),
-      )
-      // Document changes
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "documents",
-          filter: `committee_id=eq.${committeeId}`,
-        },
-        () => refetchDocuments(),
-      )
-      // Voting round changes
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "voting_rounds",
-          filter: `session_id=eq.${session.id}`,
-        },
-        () => refetchVotingRounds(),
-      )
-      // Vote changes
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "votes",
-          filter: `session_id=eq.${session.id}`,
-        },
-        () => {
-          if (activeRound) refetchVoteTally(activeRound.id);
-        },
-      )
-      // Delegate changes (attendance, new joins)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "delegates",
-          filter: `committee_id=eq.${committeeId}`,
-        },
-        () => refetchDelegates(),
-      )
-      // Bloc changes
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "blocs",
-          filter: `session_id=eq.${session.id}`,
-        },
-        () => refetchBlocs(),
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "bloc_members",
-        },
-        () => refetchBlocs(),
-      )
-      .subscribe((status) => {
+      channel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
           setConnectionStatus("connected");
-          // Re-fetch session immediately on connect so the timer snaps
-          // to the correct value without needing a manual page refresh.
           refetchSession();
-        } else if (status === "CHANNEL_ERROR")
+        } else if (status === "CHANNEL_ERROR") {
           setConnectionStatus("reconnecting");
-        else if (status === "CLOSED") setConnectionStatus("disconnected");
+        } else if (status === "CLOSED") {
+          setConnectionStatus("disconnected");
+        }
       });
+    } else {
+      // 2. No active session yet — listen for one to be created by the EB
+      channel
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "sessions",
+            filter: `committee_id=eq.${committeeId}`,
+          },
+          (payload) => {
+            const newSession = payload.new as Session;
+            setSession(newSession);
+            setCurrentSession(newSession);
+            setMode(newSession.mode as SessionMode);
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "delegates",
+            filter: `committee_id=eq.${committeeId}`,
+          },
+          () => refetchDelegates(),
+        )
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setConnectionStatus("connected");
+          } else if (status === "CHANNEL_ERROR") {
+            setConnectionStatus("reconnecting");
+          } else if (status === "CLOSED") {
+            setConnectionStatus("disconnected");
+          }
+        });
+    }
 
     return () => {
       supabase.removeChannel(channel);

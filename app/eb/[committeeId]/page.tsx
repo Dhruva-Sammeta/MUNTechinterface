@@ -41,6 +41,7 @@ import {
   CheckCircle2,
   Loader2,
   WifiOff,
+  Wifi,
   GripVertical,
 } from "lucide-react";
 import { ChatHub } from "@/components/chat/ChatHub";
@@ -465,10 +466,18 @@ export default function EBPage() {
             </h1>
           </div>
           <div className="flex items-center gap-4 flex-shrink-0">
-            {data.connectionStatus !== "connected" && (
-              <span className="text-xs flex items-center gap-1 text-amber-400">
-                <WifiOff size={12} />{" "}
-                <span className="hidden sm:inline">Syncing UI…</span>
+            {/* DIAGNOSTIC SYSTEM */}
+            {data.connectionStatus === "connected" ? (
+              <span className="text-[10px] flex items-center gap-1 text-emerald-400 font-mono tracking-widest border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 rounded cursor-help" title="Connected: Realtime sync active">
+                <Wifi size={10} /> Connected
+              </span>
+            ) : data.connectionStatus === "reconnecting" ? (
+              <span className="text-[10px] flex items-center gap-1 text-amber-400 font-mono tracking-widest border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 rounded cursor-help" title="ERR1: Realtime Link Reconnecting">
+                <WifiOff size={10} /> ERR1
+              </span>
+            ) : (
+              <span className="text-[10px] flex items-center gap-1 text-red-500 font-mono tracking-widest border border-red-500/20 bg-red-500/10 px-1.5 py-0.5 rounded cursor-help" title="ERR3: Database Disconnected">
+                <AlertCircle size={10} /> ERR3
               </span>
             )}
             <ModeBadge mode={mode} />
