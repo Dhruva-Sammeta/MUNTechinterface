@@ -14,6 +14,7 @@ import {
   CheckCircle2, 
   XCircle,
   Loader2,
+  AlertTriangle,
   Clock
 } from "lucide-react";
 import { GlassPanel } from "@/components/ui/shared";
@@ -42,7 +43,7 @@ export function ChatHub({
   const [selectedRecipient, setSelectedRecipient] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { messages, decryptedCache, isLoading, sendMessage, approveMessage } = useChat(
+  const { messages, decryptedCache, isLoading, sendMessage, approveMessage, reportMessage } = useChat(
     committeeId, 
     sessionId, 
     delegateId,
@@ -161,7 +162,7 @@ export function ChatHub({
           className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar"
           style={{ background: "radial-gradient(circle at top right, rgba(255,255,255,0.02), transparent)" }}
         >
-          {isLoading ? (
+            {isLoading ? (
             <div className="h-full flex items-center justify-center">
               <Loader2 className="animate-spin opacity-20" size={32} />
             </div>
@@ -170,7 +171,7 @@ export function ChatHub({
               <MessageCircle size={48} className="mb-4" />
               <p className="text-sm italic">No messages in this scope yet.</p>
             </div>
-          ) : (
+            ) : (
             filteredMessages.map((msg, i) => (
               <ChatMessage 
                 key={msg.id} 
@@ -180,6 +181,8 @@ export function ChatHub({
                 delegates={delegates}
                 isEBView={delegateRole === "eb" || delegateRole === "admin"}
                 onApprove={() => approveMessage(msg.id)}
+                onReport={async (reason: string | null) => await reportMessage(msg.id, reason || undefined)}
+                myDelegateId={delegateId}
               />
             ))
           )}
@@ -218,7 +221,7 @@ export function ChatHub({
   );
 }
 
-function ChatMessage({ msg, isMine, plaintext, delegates, isEBView, onApprove }: any) {
+function ChatMessage({ msg, isMine, plaintext, delegates, isEBView, onApprove, onReport, myDelegateId }: any) {
   const sender = delegates.find((d: any) => d.id === msg.sender_id);
   const recipient = delegates.find((d: any) => d.id === msg.recipient_id);
 
@@ -262,6 +265,23 @@ function ChatMessage({ msg, isMine, plaintext, delegates, isEBView, onApprove }:
                 title="Approve Chit"
               >
                 <CheckCircle2 size={14} />
+              </button>
+            )}
+            {!isMine && (
+              <button
+                onClick={async () => {
+                  const reason = window.prompt("Report this message (optional reason):");
+                  if (reason === null) return;
+                  try {
+                    await onReport(reason || null);
+                  } catch (e) {
+                    // handled by hook
+                  }
+                }}
+                className="ml-2 p-1 hover:bg-white/10 rounded-md text-amber-400 transition-all"
+                title="Report Message"
+              >
+                <AlertTriangle size={14} />
               </button>
             )}
           </div>

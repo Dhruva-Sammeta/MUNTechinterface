@@ -1,92 +1,177 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Supabase CLI
 
-## Getting Started
+[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=develop)](https://coveralls.io/github/supabase/cli?branch=develop) [![Bitbucket Pipelines](https://img.shields.io/bitbucket/pipelines/supabase-cli/setup-cli/master?style=flat-square&label=Bitbucket%20Canary)](https://bitbucket.org/supabase-cli/setup-cli/pipelines) [![Gitlab Pipeline Status](https://img.shields.io/gitlab/pipeline-status/sweatybridge%2Fsetup-cli?label=Gitlab%20Canary)
+](https://gitlab.com/sweatybridge/setup-cli/-/pipelines)
 
-First, run the development server:
+[Supabase](https://supabase.io) is an open source Firebase alternative. We're building the features of Firebase using enterprise-grade open source tools.
+
+This repository contains all the functionality for Supabase CLI.
+
+- [x] Running Supabase locally
+- [x] Managing database migrations
+- [x] Creating and deploying Supabase Functions
+- [x] Generating types directly from your database schema
+- [x] Making authenticated HTTP requests to [Management API](https://supabase.com/docs/reference/api/introduction)
+
+## Getting started
+
+### Install the CLI
+
+Available via [NPM](https://www.npmjs.com) as dev dependency. To install:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm i supabase --save-dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+When installing with yarn 4, you need to disable experimental fetch with the following nodejs config.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+NODE_OPTIONS=--no-experimental-fetch yarn add supabase
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+> **Note**
+For Bun versions below v1.0.17, you must add `supabase` as a [trusted dependency](https://bun.sh/guides/install/trusted) before running `bun add -D supabase`.
 
-## --------------------------
-# Sapphire Tech Interface V2
+<details>
+  <summary><b>macOS</b></summary>
 
-## Overview
+  Available via [Homebrew](https://brew.sh). To install:
 
-Sapphire Tech Interface V2 is a redesigned and expanded system focused on modular control, scalable architecture, and high-performance execution across hardware and software environments.
+  ```sh
+  brew install supabase/tap/supabase
+  ```
 
-This version introduces improved system abstraction, tighter integration capabilities, and a foundation for future commercial deployment.
+  To install the beta release channel:
+  
+  ```sh
+  brew install supabase/tap/supabase-beta
+  brew link --overwrite supabase-beta
+  ```
+  
+  To upgrade:
 
-## Key Features
+  ```sh
+  brew upgrade supabase
+  ```
+</details>
 
-* Modular system architecture for extensibility
-* Improved performance and resource management
-* Scalable design for multi-device and multi-context operation
-* Enhanced interface layer for hardware interaction
-* Built for real-world deployment, not experimental use
+<details>
+  <summary><b>Windows</b></summary>
 
-## Intended Use
+  Available via [Scoop](https://scoop.sh). To install:
 
-This software is developed for controlled environments, internal development, and future licensed distribution.
+  ```powershell
+  scoop bucket add supabase https://github.com/supabase/scoop-bucket.git
+  scoop install supabase
+  ```
 
-It is not intended for public reuse, modification, or redistribution without explicit authorization.
+  To upgrade:
 
-## License and Usage Restrictions
+  ```powershell
+  scoop update supabase
+  ```
+</details>
 
-**All rights reserved.**
+<details>
+  <summary><b>Linux</b></summary>
 
-Copyright pending © Sapphire MUN All rights reserved.
+  Available via [Homebrew](https://brew.sh) and Linux packages.
 
-This repository and its contents are the intellectual property of Sapphire Tech.
+  #### via Homebrew
 
-You are not permitted to:
+  To install:
 
-* copy or reproduce this codebase
-* modify or create derivative works
-* distribute, sublicense, or share any portion of this project
-* use this software for personal, academic, or commercial purposes
+  ```sh
+  brew install supabase/tap/supabase
+  ```
 
-without prior written permission from Sapphire Tech.
+  To upgrade:
 
-## Commercialization Notice
+  ```sh
+  brew upgrade supabase
+  ```
 
-Sapphire Tech Interface V2 is being actively developed for commercial licensing and deployment.
+  #### via Linux packages
 
-Access to this system will be provided only through:
+  Linux packages are provided in [Releases](https://github.com/supabase/cli/releases). To install, download the `.apk`/`.deb`/`.rpm`/`.pkg.tar.zst` file depending on your package manager and run the respective commands.
 
-* officially licensed distributions
-* authorized partnerships
-* controlled release channels
+  ```sh
+  sudo apk add --allow-untrusted <...>.apk
+  ```
 
-Any unauthorized usage will be treated as a violation of intellectual property rights.
+  ```sh
+  sudo dpkg -i <...>.deb
+  ```
 
-## Access Requests
+  ```sh
+  sudo rpm -i <...>.rpm
+  ```
 
-For licensing, collaboration, or commercial inquiries, contact:
+  ```sh
+  sudo pacman -U <...>.pkg.tar.zst
+  ```
+</details>
 
-**[dhruva.sammeta10@gmail.com](mailto:dhruva.sammeta10@gmail.com)**
+<details>
+  <summary><b>Other Platforms</b></summary>
 
-## Disclaimer
+  You can also install the CLI via [go modules](https://go.dev/ref/mod#go-install) without the help of package managers.
 
-This software is provided in a controlled state and may evolve rapidly. No guarantees are made regarding stability, completeness, or backward compatibility at this stage.
+  ```sh
+  go install github.com/supabase/cli@latest
+  ```
 
-## Status
+  Add a symlink to the binary in `$PATH` for easier access:
 
-Active development.
+  ```sh
+  ln -s "$(go env GOPATH)/bin/cli" /usr/bin/supabase
+  ```
 
-Not open source.
-Not for public use.
+  This works on other non-standard Linux distros.
+</details>
 
+<details>
+  <summary><b>Community Maintained Packages</b></summary>
 
+  Available via [pkgx](https://pkgx.sh/). Package script [here](https://github.com/pkgxdev/pantry/blob/main/projects/supabase.com/cli/package.yml).
+  To install in your working directory:
+
+  ```bash
+  pkgx install supabase
+  ```
+
+  Available via [Nixpkgs](https://nixos.org/). Package script [here](https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/tools/supabase-cli/default.nix).
+</details>
+
+### Run the CLI
+
+```bash
+supabase bootstrap
+```
+
+Or using npx:
+
+```bash
+npx supabase bootstrap
+```
+
+The bootstrap command will guide you through the process of setting up a Supabase project using one of the [starter](https://github.com/supabase-community/supabase-samples/blob/main/samples.json) templates.
+
+## Docs
+
+Command & config reference can be found [here](https://supabase.com/docs/reference/cli/about).
+
+## Breaking changes
+
+We follow semantic versioning for changes that directly impact CLI commands, flags, and configurations.
+
+However, due to dependencies on other service images, we cannot guarantee that schema migrations, seed.sql, and generated types will always work for the same CLI major version. If you need such guarantees, we encourage you to pin a specific version of CLI in package.json.
+
+## Developing
+
+To run from source:
+
+```sh
+# Go >= 1.22
+go run . help
+```

@@ -172,11 +172,39 @@ export function useChat(
     else toast.success("Approved");
   };
 
+    /**
+     * Report a message for moderation
+     */
+    const reportMessage = async (msgId: string, reason?: string) => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return toast.error("Not authenticated");
+
+        const res = await fetch("/api/reports/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ messageId: msgId, reason: reason || null }),
+        });
+
+        const json = await res.json();
+        if (!res.ok) return toast.error(json.error || "Failed to report message");
+        toast.success("Reported");
+      } catch (e: any) {
+        console.error(e);
+        toast.error("Report failed");
+      }
+    };
+
   return {
     messages,
     decryptedCache,
     isLoading,
     sendMessage,
     approveMessage,
+    reportMessage,
   };
 }

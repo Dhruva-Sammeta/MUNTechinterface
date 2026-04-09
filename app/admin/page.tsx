@@ -386,6 +386,10 @@ export default function AdminPage() {
     const [isLoadingPasscodes, setIsLoadingPasscodes] = useState(false);
     const [rotatingPasscodeId, setRotatingPasscodeId] = useState<string | null>(null);
 
+    // Reports (moderation)
+    const [reports, setReports] = useState<any[]>([]);
+    const [isLoadingReports, setIsLoadingReports] = useState(false);
+
     const fetchPasscodes = useCallback(async () => {
       setIsLoadingPasscodes(true);
       try {
@@ -425,6 +429,49 @@ export default function AdminPage() {
     useEffect(() => {
       fetchPasscodes();
     }, [fetchPasscodes]);
+
+    async function fetchReports() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return;
+        setIsLoadingReports(true);
+        const res = await fetch("/api/admin/reports/list", { headers: { Authorization: `Bearer ${token}` } });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to fetch reports");
+        setReports(json.reports || []);
+      } catch (e: any) {
+        // ignore
+      } finally {
+        setIsLoadingReports(false);
+      }
+    }
+
+    useEffect(() => {
+      fetchReports();
+    }, []);
+
+    async function resolveReport(reportId: string, action: string | null = null) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) throw new Error("Not authenticated");
+        const res = await fetch("/api/admin/reports/resolve", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reportId, action }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to resolve report");
+        toast.success("Report resolved");
+        fetchReports();
+      } catch (e: any) {
+        toast.error(e.message);
+      }
+    }
 
     async function revokePasscode(passcodeId: string, revoke = true) {
       try {
@@ -529,6 +576,7 @@ export default function AdminPage() {
       label: `Delegates (${delegates.length})`,
       icon: <Users size={14} />,
     },
+    { id: "reports", label: `Reports (${reports.length})`, icon: <AlertTriangle size={14} /> },
     { id: "announce", label: "Announcements", icon: <Megaphone size={14} /> },
     { id: "export", label: "Export", icon: <Download size={14} /> },
     { id: "settings", label: "Settings", icon: <Settings size={14} /> },
@@ -693,6 +741,72 @@ export default function AdminPage() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* ===== REPORTS ===== */}
+        {activeTab === "reports" && (
+          <div className="max-w-5xl mx-auto animate-fade-in">
+            <GlassPanel>
+              <SectionHeader
+                title="Reported Messages"
+                subtitle="Moderation queue — EB and Admins can review and resolve reports"
+              />
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr>
+                      <th className="text-left py-2 px-3 text-xs text-white/40">When</th>
+                      <th className="text-left py-2 px-3 text-xs text-white/40">Committee</th>
+                      <th className="text-left py-2 px-3 text-xs text-white/40">Message</th>
+                      <th className="text-left py-2 px-3 text-xs text-white/40">Reporter</th>
+                      <th className="text-left py-2 px-3 text-xs text-white/40">Reason</th>
+                      <th className="text-left py-2 px-3 text-xs text-white/40">Status</th>
+                      <th className="text-right py-2 px-3 text-xs text-white/40">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoadingReports ? (
+                      <tr><td colSpan={7} className="py-6 text-center opacity-60">Loading reports...</td></tr>
+                    ) : reports.length === 0 ? (
+                      <tr><td colSpan={7} className="py-6 text-center opacity-40">No reports</td></tr>
+                    ) : (
+                      reports.map((r: any) => {
+                        const c = committees.find((c) => c.id === r.message?.committee_id);
+                        return (
+                          <tr key={r.id} className="hover:bg-white/5 transition-colors">
+                            <td className="py-3 px-3 text-xs">{new Date(r.created_at).toLocaleString()}</td>
+                            <td className="py-3 px-3 text-xs">{c?.short_name || r.message?.committee_id || "—"}</td>
+                            <td className="py-3 px-3 text-xs">{r.message ? r.message.id : r.message_id}</td>
+                            <td className="py-3 px-3 text-xs">{r.reporter_delegate?.display_name || r.reporter_user_id}</td>
+                            <td className="py-3 px-3 text-xs">{r.reason || "—"}</td>
+                            <td className="py-3 px-3 text-xs">{r.status}</td>
+                            <td className="py-3 px-3 text-right">
+                              <button
+                                className="px-3 py-1 rounded-md text-xs bg-white/5 hover:bg-white/10 mr-2"
+                                onClick={() => resolveReport(r.id, null)}
+                              >
+                                Dismiss
+                              </button>
+                              <button
+                                className="px-3 py-1 rounded-md text-xs bg-red-500/10 hover:bg-red-500/20"
+                                onClick={() => {
+                                  if (!confirm("Delete message and resolve report? This is irreversible.")) return;
+                                  resolveReport(r.id, "delete_message");
+                                }}
+                              >
+                                Delete Message
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </GlassPanel>
           </div>
         )}
 
