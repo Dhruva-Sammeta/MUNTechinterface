@@ -394,6 +394,7 @@ export default function AdminPage() {
     const [passcodes, setPasscodes] = useState<any[]>([]);
     const [isLoadingPasscodes, setIsLoadingPasscodes] = useState(false);
     const [rotatingPasscodeId, setRotatingPasscodeId] = useState<string | null>(null);
+    const [isRepairingLegacyPasscodes, setIsRepairingLegacyPasscodes] = useState(false);
 
     // Reports (moderation)
     const [reports, setReports] = useState<any[]>([]);
@@ -509,9 +510,7 @@ export default function AdminPage() {
       }
     }
 
-    async function rotatePasscode(passcode: any) {
-      if (!confirm("Rotate this passcode? This will create a new passcode and revoke the old one.")) return;
-      setRotatingPasscodeId(passcode.id);
+    async function rotatePasscodeInternal(passcode: any, showSuccessToast = true) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
@@ -545,20 +544,56 @@ export default function AdminPage() {
         const revokeJson = await revokeRes.json();
         if (!revokeRes.ok) throw new Error(revokeJson.error || "Failed to revoke old passcode");
 
-        // Copy new passcode to clipboard.
-        const newPlain = createJson.passcode;
-        try {
-          await navigator.clipboard.writeText(newPlain);
-          toast.success("Rotated passcode (copied to clipboard)");
-        } catch {
-          toast.success("Rotated passcode — copy manually:");
+        if (showSuccessToast) {
+          // Copy new passcode to clipboard.
+          const newPlain = createJson.passcode;
+          try {
+            await navigator.clipboard.writeText(newPlain);
+            toast.success("Rotated passcode (copied to clipboard)");
+          } catch {
+            toast.success("Rotated passcode — copy manually:");
+          }
         }
 
         fetchPasscodes();
       } catch (err: any) {
         toast.error(err.message);
+      }
+    }
+
+    async function rotatePasscode(passcode: any) {
+      if (!confirm("Rotate this passcode? This will create a new passcode and revoke the old one.")) return;
+      setRotatingPasscodeId(passcode.id);
+      try {
+        await rotatePasscodeInternal(passcode, true);
       } finally {
         setRotatingPasscodeId(null);
+      }
+    }
+
+    async function repairLegacyPasscodes() {
+      const legacyPasscodes = passcodes.filter((p) => !p.passcode_plain && !p.revoked);
+      if (!legacyPasscodes.length) {
+        toast.success("No legacy passcodes to repair");
+        return;
+      }
+      if (!confirm(`Repair ${legacyPasscodes.length} legacy passcode(s)? This will rotate each code and revoke the old one.`)) return;
+
+      setIsRepairingLegacyPasscodes(true);
+      try {
+        let repaired = 0;
+        for (const passcode of legacyPasscodes) {
+          setRotatingPasscodeId(passcode.id);
+          await rotatePasscodeInternal(passcode, false);
+          repaired += 1;
+        }
+        toast.success(`Repaired ${repaired} legacy passcode(s). Refreshing list...`);
+        await fetchPasscodes();
+      } catch (err: any) {
+        toast.error(err.message || "Failed to repair legacy passcodes");
+      } finally {
+        setRotatingPasscodeId(null);
+        setIsRepairingLegacyPasscodes(false);
       }
     }
 
@@ -1018,7 +1053,15 @@ export default function AdminPage() {
                     <div className="bg-black/10 p-3 rounded">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex gap-2">
-                          <button onClick={fetchPasscodes} className="px-3 py-2 rounded bg-white/5">Refresh</button>
+                            <button onClick={fetchPasscodes} className="px-3 py-2 rounded bg-white/5">Refresh</button>
+                            <button
+                              onClick={repairLegacyPasscodes}
+                              disabled={isRepairingLegacyPasscodes || rotatingPasscodeId !== null}
+                              className={`px-3 py-2 rounded transition-colors ${isRepairingLegacyPasscodes || rotatingPasscodeId !== null ? "bg-amber-500/20 text-amber-200/60 cursor-not-allowed" : "bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"}`}
+                              title="Generate fresh visible codes for legacy-hidden rows"
+                            >
+                              {isRepairingLegacyPasscodes ? "Repairing Legacy..." : "Repair Legacy Codes"}
+                            </button>
                           <button onClick={exportPasscodesCSV} className="px-3 py-2 rounded bg-white/5 flex items-center gap-2"><Download size={14} /> Export CSV</button>
                         </div>
                         <div className="text-xs text-white/40">
@@ -1049,7 +1092,7 @@ export default function AdminPage() {
                                 <tr key={p.id} className="hover:bg-white/5 transition-colors" style={{ borderBottom: "1px solid var(--color-border-default)" }}>
                                   <td className="py-2 px-3 font-medium text-xs">{p.display_name || "—"}</td>
                                   <td className="py-2 px-3 text-xs font-mono tracking-wider">
-                                    {p.passcode_plain || "LEGACY-HIDDEN"}
+                                      {p.passcode_plain || "LEGACY-HIDDEN (ROTATE)"}
                                   </td>
                                   <td className="py-2 px-3 text-xs"><span className="text-[10px] font-bold px-2 py-1 rounded-md bg-black/40 border border-white/5">{c?.short_name || "—"}</span></td>
                                   <td className="py-2 px-3 text-xs">{p.role}</td>
