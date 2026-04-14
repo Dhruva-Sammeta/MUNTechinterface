@@ -43,33 +43,53 @@ export default function LoginPage() {
     setHint("");
   }, [passcode]);
 
-  async function bootstrapAdmin(committeeId: string | null) {
+  async function bootstrapAdmin(committeeId: string | null, adminCode: string) {
     const sb = createClient();
     const uid = await getOrCreateAnonSession();
-    if (!uid) return false;
 
-    const {
-      data: { session },
-    } = await sb.auth.getSession();
-    const token = session?.access_token;
-    if (!token) {
-      setError("Failed to create authenticated admin session.");
-      return false;
+    // Path A: existing authenticated session (anonymous or otherwise)
+    if (uid) {
+      const {
+        data: { session },
+      } = await sb.auth.getSession();
+      const token = session?.access_token;
+      if (token) {
+        const res = await fetch("/api/admin/bootstrap-login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ committeeId }),
+        });
+        const data = await res.json();
+        if (res.ok && data?.success) return true;
+      }
     }
 
-    const res = await fetch("/api/admin/bootstrap-login", {
+    // Path B: fallback bootstrap without prior session (for projects with anon auth disabled)
+    const fallbackRes = await fetch("/api/admin/bootstrap-login", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ committeeId }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ committeeId, adminCode }),
     });
-    const data = await res.json();
-    if (!res.ok || !data?.success) {
-      setError(data?.error || "Admin bootstrap failed.");
+    const fallbackData = await fallbackRes.json();
+    if (!fallbackRes.ok || !fallbackData?.success) {
+      setError(fallbackData?.error || "Admin bootstrap failed.");
       return false;
     }
+
+    if (fallbackData?.bootstrapCredentials?.email && fallbackData?.bootstrapCredentials?.password) {
+      const { error: signInError } = await sb.auth.signInWithPassword({
+        email: fallbackData.bootstrapCredentials.email,
+        password: fallbackData.bootstrapCredentials.password,
+      });
+      if (signInError) {
+        setError("Admin credentials created but sign-in failed. Try again.");
+        return false;
+      }
+    }
+
     return true;
   }
 
@@ -84,7 +104,7 @@ export default function LoginPage() {
     // Hardcoded admin override path
     if (code === "86303") {
       try {
-        const ok = await bootstrapAdmin(matchedCommittee?.id || null);
+          const ok = await bootstrapAdmin(matchedCommittee?.id || null, code);
         if (!ok) {
           setLoading(false);
           return;
@@ -129,7 +149,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data?.valid && data?.role === "admin") {
-        const ok = await bootstrapAdmin(matchedCommittee?.id || null);
+          const ok = await bootstrapAdmin(matchedCommittee?.id || null, code);
         if (!ok) {
           setLoading(false);
           return;

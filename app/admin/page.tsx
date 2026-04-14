@@ -75,6 +75,15 @@ export default function AdminPage() {
   const [isCreatingPasscode, setIsCreatingPasscode] = useState(false);
 
   useEffect(() => {
+    try {
+      const persisted = localStorage.getItem("latestGeneratedPasscode");
+      if (persisted) setGeneratedPasscode(persisted);
+    } catch {
+      // Ignore storage errors in private mode.
+    }
+  }, []);
+
+  useEffect(() => {
     loadAll();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -385,6 +394,11 @@ export default function AdminPage() {
         if (!res.ok) throw new Error(json.error || "Failed to create passcode");
 
         setGeneratedPasscode(json.passcode);
+        try {
+          localStorage.setItem("latestGeneratedPasscode", json.passcode);
+        } catch {
+          // Ignore storage errors.
+        }
         setShowPasscodeForm(true);
         setPcDisplayName("");
         setPcPasscode("");
@@ -556,6 +570,11 @@ export default function AdminPage() {
         // Copy new passcode to clipboard and show to admin
         const newPlain = createJson.passcode;
         setGeneratedPasscode(newPlain);
+        try {
+          localStorage.setItem("latestGeneratedPasscode", newPlain);
+        } catch {
+          // Ignore storage errors.
+        }
         try {
           await navigator.clipboard.writeText(newPlain);
           toast.success("Rotated passcode (copied to clipboard)");

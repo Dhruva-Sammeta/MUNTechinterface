@@ -2,6 +2,27 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
+type PasscodeRow = {
+  id: string;
+  committee_id: string;
+  passcode_hash: string;
+  passcode_salt: string;
+  role: string;
+  display_name: string;
+  assigned_user_id: string | null;
+  expires_at: string | null;
+  revoked: boolean | null;
+};
+
+function normalize(input: unknown): string {
+  return String(input || "").trim().toUpperCase();
+}
+
+function verifyHash(code: string, salt: string, hash: string) {
+  const derived = crypto.pbkdf2Sync(code, salt, 310000, 32, "sha256").toString("hex");
+  return derived === hash;
+}
+
 export async function POST(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -13,99 +34,118 @@ export async function POST(req: Request) {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: { user }, error: userErr } = await supabaseAdmin.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabaseAdmin.auth.getUser(token);
     if (userErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { code, committeeJoinCode, displayName, country } = await req.json();
-    if (!code || !committeeJoinCode) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    const body = await req.json();
+    const code = normalize(body?.code);
+    const committeeJoinCode = normalize(body?.committeeJoinCode);
+    const displayName = String(body?.displayName || "").trim();
+    const country = String(body?.country || "").trim();
 
-    // Find committee id from join code
-    const { data: committeeData } = await supabaseAdmin
+    if (!code || !committeeJoinCode) {
+      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
+
+    const { data: committee, error: committeeErr } = await supabaseAdmin
       .from("committees")
       .select("id")
-      .eq("join_code", String(committeeJoinCode).toUpperCase())
+      .eq("join_code", committeeJoinCode)
       .maybeSingle();
-    const committeeId = committeeData?.id;
-    if (!committeeId) return NextResponse.json({ error: "Invalid committee" }, { status: 400 });
-    const { data: passcodes } = await supabaseAdmin
+    if (committeeErr || !committee?.id) {
+      return NextResponse.json({ error: "Invalid committee" }, { status: 400 });
+    }
+
+    const committeeId = committee.id as string;
+
+    const { data: passcodes, error: passcodesErr } = await supabaseAdmin
       .from("delegate_passcodes")
-      .select("*")
+      .select("id,committee_id,passcode_hash,passcode_salt,role,display_name,assigned_user_id,expires_at,revoked")
       .eq("committee_id", committeeId)
       .order("created_at", { ascending: false });
 
-    if (!passcodes || passcodes.length === 0) {
+    if (passcodesErr) {
+      return NextResponse.json({ error: passcodesErr.message }, { status: 500 });
+    }
+
+    const rows = (passcodes || []) as PasscodeRow[];
+    const now = Date.now();
+    let matched: PasscodeRow | null = null;
+
+    for (const row of rows) {
+      if (row.revoked) continue;
+      if (row.expires_at && new Date(row.expires_at).getTime() <= now) continue;
+      if (!verifyHash(code, row.passcode_salt, row.passcode_hash)) continue;
+      matched = row;
+      break;
+    }
+
+    if (!matched) {
       return NextResponse.json({ error: "Invalid passcode" }, { status: 400 });
     }
 
-    const now = Date.now();
-    let matched: any = null;
-    for (const p of passcodes) {
-      if (p.expires_at && new Date(p.expires_at).getTime() <= now) continue;
-      if (p.revoked) continue;
-      const derived = crypto.pbkdf2Sync(String(code).toUpperCase(), p.passcode_salt, 310000, 32, "sha256").toString("hex");
-      if (derived === p.passcode_hash) {
-        matched = p;
-        break;
-      }
-    }
-
-    if (!matched) return NextResponse.json({ error: "Invalid passcode" }, { status: 400 });
-
-    // If the passcode is already assigned to a different user, reject
-    if (matched.assigned_user_id && matched.assigned_user_id !== user.id) {
-      return NextResponse.json({ error: "Passcode already assigned to another user" }, { status: 403 });
-    }
-
-    // Check if delegate record for this user exists
-    const { data: existingDelegate } = await supabaseAdmin
+    const { data: existingDelegate, error: existingErr } = await supabaseAdmin
       .from("delegates")
-      .select("id")
+      .select("id, committee_id")
       .eq("user_id", user.id)
       .maybeSingle();
+    if (existingErr) {
+      return NextResponse.json({ error: existingErr.message }, { status: 500 });
+    }
 
-    let delegateId: string | null = null;
-    if (existingDelegate) {
-      // Update existing delegate record with committee/role and mark logged-in
-      const { error: updateError } = await supabaseAdmin
+    let delegateId: string | null = existingDelegate?.id ?? null;
+
+    if (delegateId) {
+      if (matched.assigned_user_id && matched.assigned_user_id !== delegateId) {
+        return NextResponse.json({ error: "Passcode already assigned to another user" }, { status: 403 });
+      }
+
+      const { error: updateErr } = await supabaseAdmin
         .from("delegates")
         .update({
           committee_id: matched.committee_id,
           display_name: displayName || matched.display_name,
-          country: country || matched.display_name,
-          role: matched.role,
+          country: country || displayName || matched.display_name,
+          role: matched.role || "delegate",
           has_logged_in: true,
         })
-        .eq("id", existingDelegate.id);
-      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
-      delegateId = existingDelegate.id;
+        .eq("id", delegateId);
+      if (updateErr) {
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+      }
     } else {
-      // Insert new delegate record (mark as logged-in)
-      const { data: inserted, error: insertError } = await supabaseAdmin
+      const { data: inserted, error: insertErr } = await supabaseAdmin
         .from("delegates")
         .insert({
           user_id: user.id,
           committee_id: matched.committee_id,
           display_name: displayName || matched.display_name,
-          country: country || matched.display_name,
-          role: matched.role,
+          country: country || displayName || matched.display_name,
+          role: matched.role || "delegate",
           has_logged_in: true,
         })
-        .select()
+        .select("id")
         .maybeSingle();
-      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
-      delegateId = inserted?.id ?? null;
+      if (insertErr || !inserted?.id) {
+        return NextResponse.json({ error: insertErr?.message || "Failed to create delegate" }, { status: 500 });
+      }
+      delegateId = inserted.id;
     }
 
-    // Assign passcode to this user (persistent)
-    await supabaseAdmin
+    const { error: assignErr } = await supabaseAdmin
       .from("delegate_passcodes")
       .update({ assigned_user_id: delegateId, assigned_at: new Date().toISOString() })
       .eq("id", matched.id);
+    if (assignErr) {
+      return NextResponse.json({ error: assignErr.message }, { status: 500 });
+    }
 
     return NextResponse.json({ success: true, role: matched.role || "delegate" });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: err.message || "Failed" }, { status: 500 });
   }
 }
