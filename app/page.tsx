@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Committee } from "@/lib/database.types";
+import Link from "next/link";
 
 // Authentication is strictly hierarchical: Start as delegate, then escalate.
 
@@ -409,18 +410,26 @@ export default function LoginPage() {
                     Select a committee or continue as admin
                   </p>
                   <div className="mt-4 flex justify-center">
-                    <button
-                      onClick={() => {
-                        setAdminEntry(true);
-                        setMatchedCommittee(null);
-                        setPasscodeInfo(null);
-                        setHint("Admin login selected. Enter admin passcode.");
-                        setStep("passcode");
-                      }}
-                      className="px-4 py-2 rounded-xl text-[11px] text-cyan-100 bg-cyan-600/20 border border-cyan-500/40 hover:bg-cyan-600/30 transition-colors uppercase tracking-[0.15em] font-semibold"
-                    >
-                      Admin Login
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setAdminEntry(true);
+                          setMatchedCommittee(null);
+                          setPasscodeInfo(null);
+                          setHint("Admin login selected. Enter admin passcode.");
+                          setStep("passcode");
+                        }}
+                        className="px-4 py-2 rounded-xl text-[11px] text-cyan-100 bg-cyan-600/20 border border-cyan-500/40 hover:bg-cyan-600/30 transition-colors uppercase tracking-[0.15em] font-semibold"
+                      >
+                        Admin Code Login
+                      </button>
+                      <Link
+                        href="/login"
+                        className="px-4 py-2 rounded-xl text-[11px] text-white bg-slate-700/60 border border-slate-400/30 hover:bg-slate-700/80 transition-colors uppercase tracking-[0.15em] font-semibold"
+                      >
+                        Admin Email Login
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </motion.div>

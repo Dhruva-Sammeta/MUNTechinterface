@@ -144,17 +144,36 @@ export async function POST(req: Request) {
       committee_id: committeeId,
       passcode_hash: hash,
       passcode_salt: salt,
+      passcode_plain: plain,
       display_name: displayName,
       role: normalizedRole,
       is_persistent: true,
     };
     if (expiresAt) insertObj.expires_at = expiresAt;
 
-    const { error: insertError, data: inserted } = await supabaseAdmin.from("delegate_passcodes").insert(insertObj).select().maybeSingle();
+    let { error: insertError, data: inserted } = await supabaseAdmin
+      .from("delegate_passcodes")
+      .insert(insertObj)
+      .select()
+      .maybeSingle();
+
+    // Backward compatibility for databases that do not have passcode_plain yet.
+    if (insertError && /passcode_plain/i.test(insertError.message || "")) {
+      const legacyInsert = { ...insertObj };
+      delete legacyInsert.passcode_plain;
+      const retry = await supabaseAdmin
+        .from("delegate_passcodes")
+        .insert(legacyInsert)
+        .select()
+        .maybeSingle();
+      insertError = retry.error;
+      inserted = retry.data;
+    }
+
     if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
     // Audit log
-    await supabaseAdmin.from("passcode_audit").insert({ action: "create", admin_user_id: adminUser.id, passcode_id: inserted.id, details: { display_name: displayName, role: normalizedRole, is_persistent: true } });
+    await supabaseAdmin.from("passcode_audit").insert({ action: "create", admin_user_id: adminUser.id, passcode_id: inserted.id, details: { display_name: displayName, role: normalizedRole, is_persistent: true, passcode: plain } });
 
     return NextResponse.json({ success: true, passcode: plain });
   } catch (err: any) {

@@ -71,17 +71,7 @@ export default function AdminPage() {
   const [pcDisplayName, setPcDisplayName] = useState("");
   const [pcPasscode, setPcPasscode] = useState("");
   const [pcRole, setPcRole] = useState("delegate");
-  const [generatedPasscode, setGeneratedPasscode] = useState<string | null>(null);
   const [isCreatingPasscode, setIsCreatingPasscode] = useState(false);
-
-  useEffect(() => {
-    try {
-      const persisted = localStorage.getItem("latestGeneratedPasscode");
-      if (persisted) setGeneratedPasscode(persisted);
-    } catch {
-      // Ignore storage errors in private mode.
-    }
-  }, []);
 
   useEffect(() => {
     loadAll();
@@ -339,13 +329,7 @@ export default function AdminPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to register admin");
 
-      // Admin flow typically creates account immediately; keep passcode handling as compatibility fallback.
-      if (result.passcode) {
-        setGeneratedPasscode(result.passcode);
-        toast.success("Code created — copy and share");
-      } else {
-        toast.success("Admin account created successfully");
-      }
+      toast.success("Admin account created successfully");
       setShowRegForm(false);
       // Reset form
       setNewDelEmail("");
@@ -393,16 +377,10 @@ export default function AdminPage() {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Failed to create passcode");
 
-        setGeneratedPasscode(json.passcode);
-        try {
-          localStorage.setItem("latestGeneratedPasscode", json.passcode);
-        } catch {
-          // Ignore storage errors.
-        }
         setShowPasscodeForm(true);
         setPcDisplayName("");
         setPcPasscode("");
-        toast.success("Passcode created — visible below, copy and share");
+        toast.success("Passcode created — check Recent Passcodes below");
         fetchPasscodes();
         loadAll();
       } catch (err: any) {
@@ -567,14 +545,8 @@ export default function AdminPage() {
         const revokeJson = await revokeRes.json();
         if (!revokeRes.ok) throw new Error(revokeJson.error || "Failed to revoke old passcode");
 
-        // Copy new passcode to clipboard and show to admin
+        // Copy new passcode to clipboard.
         const newPlain = createJson.passcode;
-        setGeneratedPasscode(newPlain);
-        try {
-          localStorage.setItem("latestGeneratedPasscode", newPlain);
-        } catch {
-          // Ignore storage errors.
-        }
         try {
           await navigator.clipboard.writeText(newPlain);
           toast.success("Rotated passcode (copied to clipboard)");
@@ -592,12 +564,12 @@ export default function AdminPage() {
 
     function exportPasscodesCSV() {
       if (!passcodes.length) return toast.error("No passcodes to export");
-      // Include Passcode ID and Assigned Delegate ID (UUID) for easy programmatic use
-      let csv = "Passcode ID,Display Name,Committee,Role,Created At,Expires At,Assigned ID,Assigned Name,Assigned At,Revoked,Is Persistent\n";
+      // Include Passcode ID and plaintext code for admin operations.
+      let csv = "Passcode ID,Passcode,Display Name,Committee,Role,Created At,Expires At,Assigned ID,Assigned Name,Assigned At,Revoked,Is Persistent\n";
       passcodes.forEach((p) => {
         const c = committees.find((c) => c.id === p.committee_id);
         const assigned = delegates.find((d) => d.id === p.assigned_user_id);
-        csv += `"${p.id}","${p.display_name || ""}","${c?.short_name || ""}","${p.role}","${p.created_at || ""}","${p.expires_at || ""}","${p.assigned_user_id || ""}","${assigned?.display_name || ""}","${p.assigned_at || ""}","${p.revoked}","${p.is_persistent}"\n`;
+        csv += `"${p.id}","${p.passcode_plain || ""}","${p.display_name || ""}","${c?.short_name || ""}","${p.role}","${p.created_at || ""}","${p.expires_at || ""}","${p.assigned_user_id || ""}","${assigned?.display_name || ""}","${p.assigned_at || ""}","${p.revoked}","${p.is_persistent}"\n`;
       });
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
@@ -895,33 +867,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {generatedPasscode && (
-                <div className="mb-6 p-4 rounded-2xl border border-emerald-400/40 bg-emerald-500/10">
-                  <p className="text-[11px] uppercase tracking-[0.12em] text-emerald-200/80 font-semibold mb-2">
-                    Latest Generated Delegate/EB Code
-                  </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="px-4 py-2 rounded-lg bg-black/30 border border-emerald-300/30 font-mono tracking-widest text-lg text-emerald-100">
-                      {generatedPasscode}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(generatedPasscode);
-                          toast.success("Passcode copied to clipboard");
-                        } catch {
-                          toast.error("Copy failed");
-                        }
-                      }}
-                      className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 transition-colors"
-                    >
-                      Copy Code
-                    </button>
-                  </div>
-                </div>
-              )}
-
               {showRegForm && (
                 <motion.div 
                   initial={{ opacity: 0, height: 0 }}
@@ -1065,29 +1010,7 @@ export default function AdminPage() {
                     </div>
 
                     <div className="col-span-3">
-                      <div className="flex gap-2">
-                        <button type="submit" disabled={isCreatingPasscode} className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-colors">{isCreatingPasscode ? "Creating…" : "Register Delegate/EB"}</button>
-                        {generatedPasscode && (
-                          <div className="ml-2 flex items-center gap-2">
-                            <div className="px-3 py-2 rounded-lg bg-black/20 border border-white/5 font-mono tracking-widest">{generatedPasscode}</div>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  await navigator.clipboard.writeText(generatedPasscode);
-                                  toast.success("Passcode copied to clipboard");
-                                } catch (e: any) {
-                                  toast.error("Copy failed");
-                                }
-                              }}
-                              className="px-2 py-1 rounded bg-white/5 text-xs"
-                              title="Copy passcode"
-                            >
-                              <Copy size={14} />
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      <button type="submit" disabled={isCreatingPasscode} className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-colors">{isCreatingPasscode ? "Creating…" : "Register Delegate/EB"}</button>
                     </div>
                   </form>
                   <div className="mt-4">
@@ -1108,6 +1031,7 @@ export default function AdminPage() {
                           <thead>
                             <tr style={{ borderBottom: "1px solid var(--color-border-default)" }}>
                               <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Delegation</th>
+                              <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Passcode</th>
                               <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Committee</th>
                               <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Role</th>
                               <th className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Created</th>
@@ -1124,6 +1048,9 @@ export default function AdminPage() {
                               return (
                                 <tr key={p.id} className="hover:bg-white/5 transition-colors" style={{ borderBottom: "1px solid var(--color-border-default)" }}>
                                   <td className="py-2 px-3 font-medium text-xs">{p.display_name || "—"}</td>
+                                  <td className="py-2 px-3 text-xs font-mono tracking-wider">
+                                    {p.passcode_plain || "LEGACY-HIDDEN"}
+                                  </td>
                                   <td className="py-2 px-3 text-xs"><span className="text-[10px] font-bold px-2 py-1 rounded-md bg-black/40 border border-white/5">{c?.short_name || "—"}</span></td>
                                   <td className="py-2 px-3 text-xs">{p.role}</td>
                                   <td className="py-2 px-3 text-xs">{p.created_at ? new Date(p.created_at).toLocaleString() : ""}</td>
@@ -1132,6 +1059,22 @@ export default function AdminPage() {
                                   <td className="py-2 px-3 text-xs">{p.revoked ? "Yes" : "No"}</td>
                                   <td className="py-2 px-3 text-right">
                                     <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (!p.passcode_plain) return;
+                                          try {
+                                            await navigator.clipboard.writeText(p.passcode_plain);
+                                            toast.success("Passcode copied");
+                                          } catch {
+                                            toast.error("Copy failed");
+                                          }
+                                        }}
+                                        disabled={!p.passcode_plain}
+                                        className={`p-1.5 rounded transition-colors ${p.passcode_plain ? "bg-white/5 hover:bg-white/10 text-white/80" : "bg-white/5 text-white/20 cursor-not-allowed"}`}
+                                      >
+                                        <Copy size={13} />
+                                      </button>
                                       <button
                                         onClick={() => revokePasscode(p.id, !p.revoked)}
                                         className={`p-1.5 rounded transition-colors ${p.revoked ? "bg-green-500/10 text-green-400" : "text-red-500/60 hover:text-red-400 hover:bg-red-500/10"}`}
@@ -1152,7 +1095,7 @@ export default function AdminPage() {
                             })}
                             {passcodes.length === 0 && (
                               <tr>
-                                <td colSpan={8} className="py-4 px-3 text-xs text-white/40">No passcodes yet</td>
+                                <td colSpan={9} className="py-4 px-3 text-xs text-white/40">No passcodes yet</td>
                               </tr>
                             )}
                           </tbody>

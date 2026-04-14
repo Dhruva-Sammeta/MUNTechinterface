@@ -156,20 +156,35 @@ export async function POST(req: Request) {
         committee_id: committeeId,
         passcode_hash: hash,
         passcode_salt: salt,
+        passcode_plain: plain,
         display_name: displayName,
         role: role || "delegate",
         is_persistent: true,
       };
 
-      const { error: insertError, data: inserted } = await supabaseAdmin
+      let { error: insertError, data: inserted } = await supabaseAdmin
         .from("delegate_passcodes")
         .insert(insertObj)
         .select()
         .maybeSingle();
+
+      // Backward compatibility for databases that do not have passcode_plain yet.
+      if (insertError && /passcode_plain/i.test(insertError.message || "")) {
+        const legacyInsert = { ...insertObj };
+        delete legacyInsert.passcode_plain;
+        const retry = await supabaseAdmin
+          .from("delegate_passcodes")
+          .insert(legacyInsert)
+          .select()
+          .maybeSingle();
+        insertError = retry.error;
+        inserted = retry.data;
+      }
+
       if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
       // Audit log
-      await supabaseAdmin.from("passcode_audit").insert({ action: "create", admin_user_id: adminUser.id, passcode_id: inserted.id, details: { display_name: displayName, role: role || "delegate" } });
+      await supabaseAdmin.from("passcode_audit").insert({ action: "create", admin_user_id: adminUser.id, passcode_id: inserted.id, details: { display_name: displayName, role: role || "delegate", passcode: plain } });
 
       // Optionally create an auth user (temp credentials) but DO NOT create a delegate row yet.
       if (email && password) {
