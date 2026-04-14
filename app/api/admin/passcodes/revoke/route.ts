@@ -1,45 +1,52 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { createSupabaseAdmin } from "@/lib/server/supabaseAdmin";
+
+async function ensureAdmin(accessToken: string) {
+  const admin = createSupabaseAdmin();
+  const {
+    data: { user },
+    error: userError,
+  } = await admin.auth.getUser(accessToken);
+  if (userError || !user) return null;
+
+  const { data: delegate } = await admin
+    .from("delegates")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (delegate?.role !== "admin") return null;
+  return user.id;
+}
 
 export async function POST(req: Request) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: { user: adminUser }, error: authError } = await supabaseAdmin.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
-    if (authError || !adminUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: adminDelegate, error: delegateError } = await supabaseAdmin
-      .from("delegates")
-      .select("role")
-      .eq("user_id", adminUser.id)
-      .maybeSingle();
-
-    if (delegateError || adminDelegate?.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
-    }
+    const adminUserId = await ensureAdmin(authHeader.replace("Bearer ", ""));
+    if (!adminUserId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { passcodeId, revoke } = await req.json();
-    if (!passcodeId) return NextResponse.json({ error: "Missing passcodeId" }, { status: 400 });
+    if (!passcodeId) return NextResponse.json({ error: "passcodeId required" }, { status: 400 });
 
-    const updates: any = { revoked: !!revoke };
-    if (revoke === false) updates.revoked = false;
+    const admin = createSupabaseAdmin();
+    const { error } = await admin
+      .from("delegate_passcodes")
+      .update({ revoked: !!revoke })
+      .eq("id", passcodeId);
 
-    const { error } = await supabaseAdmin.from("delegate_passcodes").update(updates).eq("id", passcodeId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    await supabaseAdmin.from("passcode_audit").insert({ action: revoke ? "revoke" : "unrevoke", admin_user_id: adminUser.id, passcode_id: passcodeId, details: { revoke } });
+    await admin.from("passcode_audit").insert({
+      action: revoke ? "revoke" : "restore",
+      admin_user_id: adminUserId,
+      passcode_id: passcodeId,
+      details: {},
+    });
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Update failed" }, { status: 500 });
   }
 }
