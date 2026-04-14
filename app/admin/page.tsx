@@ -1092,7 +1092,21 @@ export default function AdminPage() {
                                 <tr key={p.id} className="hover:bg-white/5 transition-colors" style={{ borderBottom: "1px solid var(--color-border-default)" }}>
                                   <td className="py-2 px-3 font-medium text-xs">{p.display_name || "—"}</td>
                                   <td className="py-2 px-3 text-xs font-mono tracking-wider">
-                                      {p.passcode_plain || "LEGACY-HIDDEN (ROTATE)"}
+                                    {p.passcode_plain ? (
+                                      p.passcode_plain
+                                    ) : (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-amber-300/80">LEGACY-HIDDEN</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => rotatePasscode(p)}
+                                          disabled={!!rotatingPasscodeId}
+                                          className={`px-2 py-1 rounded text-[10px] font-sans tracking-normal ${rotatingPasscodeId ? "bg-amber-500/20 text-amber-200/60 cursor-not-allowed" : "bg-amber-500/25 text-amber-100 hover:bg-amber-500/35"}`}
+                                        >
+                                          Fix now
+                                        </button>
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="py-2 px-3 text-xs"><span className="text-[10px] font-bold px-2 py-1 rounded-md bg-black/40 border border-white/5">{c?.short_name || "—"}</span></td>
                                   <td className="py-2 px-3 text-xs">{p.role}</td>
