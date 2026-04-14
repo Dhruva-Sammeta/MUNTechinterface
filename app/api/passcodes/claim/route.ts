@@ -34,6 +34,32 @@ function matchesPasscode(code: string, row: PasscodeRow) {
   }
 }
 
+async function hydratePasscodePlainFromAudit(supabaseAdmin: any, rows: PasscodeRow[]) {
+  const ids = rows.map((row) => row.id).filter(Boolean);
+  if (!ids.length) return rows;
+
+  const { data: auditRows } = await supabaseAdmin
+    .from("passcode_audit")
+    .select("passcode_id,details")
+    .eq("action", "create")
+    .in("passcode_id", ids)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  const passcodeMap = new Map<string, string>();
+  for (const audit of (auditRows || []) as any[]) {
+    const passcodeValue = audit.details?.passcode;
+    if (audit.passcode_id && typeof passcodeValue === "string" && passcodeValue.trim()) {
+      passcodeMap.set(audit.passcode_id, passcodeValue.trim().toUpperCase());
+    }
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    passcode_plain: row.passcode_plain || passcodeMap.get(row.id) || null,
+  }));
+}
+
 export async function POST(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -96,7 +122,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: passcodesErr.message }, { status: 500 });
     }
 
-    const rows = (passcodes || []) as PasscodeRow[];
+    const rows = await hydratePasscodePlainFromAudit(supabaseAdmin, (passcodes || []) as PasscodeRow[]);
     const now = Date.now();
     let matched: PasscodeRow | null = null;
 
