@@ -5,6 +5,7 @@ import crypto from "crypto";
 const PASSCODE_REGEX = /^[A-Z0-9_-]{4,24}$/;
 
 type ExistingPasscodeRow = {
+  passcode_plain?: string | null;
   passcode_hash: string;
   passcode_salt: string;
 };
@@ -35,8 +36,14 @@ function generateCandidate(prefix: string) {
 
 function passcodeExists(passcode: string, existing: ExistingPasscodeRow[]) {
   for (const row of existing) {
-    const derived = derivePasscodeHash(passcode, row.passcode_salt);
-    if (derived === row.passcode_hash) return true;
+    if (row.passcode_plain && row.passcode_plain === passcode) return true;
+    if (!row.passcode_hash || !row.passcode_salt) continue;
+    try {
+      const derived = derivePasscodeHash(passcode, row.passcode_salt);
+      if (derived === row.passcode_hash) return true;
+    } catch {
+      continue;
+    }
   }
   return false;
 }
@@ -101,10 +108,23 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Invalid committee" }, { status: 400 });
       }
 
-      const { data: existingPasscodes, error: existingError } = await supabaseAdmin
+      const withPlainResult = await supabaseAdmin
         .from("delegate_passcodes")
-        .select("passcode_hash, passcode_salt")
+        .select("passcode_plain, passcode_hash, passcode_salt")
         .eq("committee_id", committeeId);
+
+      let existingPasscodes: ExistingPasscodeRow[] | null = withPlainResult.data as ExistingPasscodeRow[] | null;
+      let existingError = withPlainResult.error;
+
+      if (existingError && /passcode_plain/i.test(existingError.message || "")) {
+        const legacyResult = await supabaseAdmin
+          .from("delegate_passcodes")
+          .select("passcode_hash, passcode_salt")
+          .eq("committee_id", committeeId);
+        existingPasscodes = legacyResult.data as ExistingPasscodeRow[] | null;
+        existingError = legacyResult.error;
+      }
+
       if (existingError) {
         return NextResponse.json({ error: existingError.message }, { status: 500 });
       }

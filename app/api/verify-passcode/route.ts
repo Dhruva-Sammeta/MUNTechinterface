@@ -5,6 +5,7 @@ import crypto from "crypto";
 type PasscodeRow = {
   id: string;
   committee_id: string;
+  passcode_plain: string | null;
   passcode_hash: string;
   passcode_salt: string;
   role: string;
@@ -21,6 +22,16 @@ function normalize(input: unknown): string {
 function verifyHash(code: string, salt: string, hash: string) {
   const derived = crypto.pbkdf2Sync(code, salt, 310000, 32, "sha256").toString("hex");
   return derived === hash;
+}
+
+function matchesPasscode(code: string, row: PasscodeRow) {
+  if (row.passcode_plain && row.passcode_plain === code) return true;
+  if (!row.passcode_hash || !row.passcode_salt) return false;
+  try {
+    return verifyHash(code, row.passcode_salt, row.passcode_hash);
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(req: Request) {
@@ -70,11 +81,24 @@ export async function POST(req: Request) {
 
     const committeeId = committee.id as string;
 
-    const { data: passcodes, error: passcodesErr } = await supabaseAdmin
+    const withPlainResult = await supabaseAdmin
       .from("delegate_passcodes")
-      .select("id,committee_id,passcode_hash,passcode_salt,role,display_name,assigned_user_id,expires_at,revoked")
+      .select("id,committee_id,passcode_plain,passcode_hash,passcode_salt,role,display_name,assigned_user_id,expires_at,revoked")
       .eq("committee_id", committeeId)
       .order("created_at", { ascending: false });
+
+    let passcodes: PasscodeRow[] | null = withPlainResult.data as PasscodeRow[] | null;
+    let passcodesErr = withPlainResult.error;
+
+    if (passcodesErr && /passcode_plain/i.test(passcodesErr.message || "")) {
+      const legacyResult = await supabaseAdmin
+        .from("delegate_passcodes")
+        .select("id,committee_id,passcode_hash,passcode_salt,role,display_name,assigned_user_id,expires_at,revoked")
+        .eq("committee_id", committeeId)
+        .order("created_at", { ascending: false });
+      passcodes = legacyResult.data as PasscodeRow[] | null;
+      passcodesErr = legacyResult.error;
+    }
 
     if (passcodesErr) {
       return NextResponse.json({ valid: false, error: passcodesErr.message }, { status: 500 });
@@ -86,7 +110,7 @@ export async function POST(req: Request) {
     for (const row of rows) {
       if (row.revoked) continue;
       if (row.expires_at && new Date(row.expires_at).getTime() <= now) continue;
-      if (!verifyHash(code, row.passcode_salt, row.passcode_hash)) continue;
+      if (!matchesPasscode(code, row)) continue;
 
       return NextResponse.json({
         valid: true,
