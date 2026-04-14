@@ -24,6 +24,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [hint, setHint] = useState("");
   const [passcodeInfo, setPasscodeInfo] = useState<any>(null);
+  const [adminEntry, setAdminEntry] = useState(false);
 
   // Initial load of committees
   useEffect(() => {
@@ -42,43 +43,112 @@ export default function LoginPage() {
     setHint("");
   }, [passcode]);
 
+  async function bootstrapAdmin(committeeId: string | null) {
+    const sb = createClient();
+    const uid = await getOrCreateAnonSession();
+    if (!uid) return false;
+
+    const {
+      data: { session },
+    } = await sb.auth.getSession();
+    const token = session?.access_token;
+    if (!token) {
+      setError("Failed to create authenticated admin session.");
+      return false;
+    }
+
+    const res = await fetch("/api/admin/bootstrap-login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ committeeId }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data?.success) {
+      setError(data?.error || "Admin bootstrap failed.");
+      return false;
+    }
+    return true;
+  }
+
   // ── Step 1: Validate passcode ─────────────────────────────────────────────
   async function handlePasscodeSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setLoading(true);
 
-    if (!matchedCommittee) {
-      setError("Please select a committee first.");
+    const code = passcode.trim().toUpperCase();
+
+    // Hardcoded admin override path
+    if (code === "86303") {
+      try {
+        const ok = await bootstrapAdmin(matchedCommittee?.id || null);
+        if (!ok) {
+          setLoading(false);
+          return;
+        }
+        router.push("/admin");
+      } catch {
+        setError("Unable to initialize admin session. Try again.");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
-
-    const code = passcode.toUpperCase();
 
     // Quick client-side checks for committee join / EB codes
     if (
-      code === matchedCommittee.join_code ||
-      code === `${matchedCommittee.join_code}_EB`
+      matchedCommittee &&
+      (code === matchedCommittee.join_code ||
+        code === `${matchedCommittee.join_code}_EB`)
     ) {
+      setPasscodeInfo(null);
       setStep("delegation");
+      setLoading(false);
       return;
     }
 
-    // For admin passcode, verify server-side so the secret is not embedded in client bundles
+    // Verify server-side for admin and generated passcodes.
     try {
+      if (!matchedCommittee && !adminEntry) {
+        setError("Please select a committee first, or choose Admin Login.");
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch("/api/verify-passcode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, committeeJoinCode: matchedCommittee.join_code }),
+        body: JSON.stringify({
+          code,
+          committeeJoinCode: matchedCommittee?.join_code,
+        }),
       });
       const data = await res.json();
-      setPasscodeInfo(data);
-      if (res.ok && data?.valid) {
-        setStep("delegation");
+
+      if (res.ok && data?.valid && data?.role === "admin") {
+        const ok = await bootstrapAdmin(matchedCommittee?.id || null);
+        if (!ok) {
+          setLoading(false);
+          return;
+        }
+        router.push("/admin");
+      } else if (res.ok && data?.valid) {
+        if (!matchedCommittee) {
+          setError("Select a committee before using delegate or EB codes.");
+        } else {
+          setPasscodeInfo(data);
+          setStep("delegation");
+        }
       } else {
         setError("Invalid passcode. Enter your committee join code, EB code, or Admin code.");
       }
     } catch (err) {
       setError("Unable to verify passcode. Try again later.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -120,10 +190,10 @@ export default function LoginPage() {
       .eq("user_id", uid)
       .maybeSingle();
 
-    // If passcode is an admin-created, per-delegate code, redeem it server-side
+    // If passcode is an admin-created code, always redeem it server-side.
     let assignedRole = "delegate";
     try {
-      if (passcodeInfo?.assigned && passcodeInfo?.passcodeId) {
+      if (passcodeInfo?.passcodeId) {
         // Get session token for anonymous user
         const { data: { session } } = await sb.auth.getSession();
         const token = session?.access_token;
@@ -137,15 +207,14 @@ export default function LoginPage() {
           if (claimRes.ok && claimData?.success) {
             assignedRole = claimData.role || "delegate";
           } else {
-            // Fallback to verification-only role if claim failed
-            const vRes = await fetch("/api/verify-passcode", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code: passcode.toUpperCase(), committeeJoinCode: matchedCommittee.join_code }),
-            });
-            const vData = await vRes.json();
-            if (vRes.ok && vData?.valid) assignedRole = vData.role || "delegate";
+            setError(claimData?.error || "Passcode claim failed");
+            setLoading(false);
+            return;
           }
+        } else {
+          setError("Not authenticated");
+          setLoading(false);
+          return;
         }
       } else {
         const res = await fetch("/api/verify-passcode", {
@@ -165,6 +234,7 @@ export default function LoginPage() {
       display_name: delegation.trim(),
       country: delegation.trim(),
       role: assignedRole,
+      has_logged_in: true,
     };
 
     if (existingDelegate) {
@@ -288,9 +358,11 @@ export default function LoginPage() {
                         transition={{ delay: i * 0.04, duration: 0.3 }}
                         onClick={() => {
                           setMatchedCommittee(c);
+                          setAdminEntry(false);
                           setStep("passcode");
                           setHint(`Committee selected: ${c.name}`);
                           setPasscode("");
+                          setPasscodeInfo(null);
                         }}
                         className="text-left px-4 py-3 rounded-xl border border-white/10 hover:border-cyan-500/50 hover:bg-white/5 transition-all outline-none active:scale-[0.97]"
                       >
@@ -314,14 +386,20 @@ export default function LoginPage() {
 
                 <div className="pt-4 border-t border-white/10">
                   <p className="w-full text-center text-[10px] text-cyan-400/60 uppercase tracking-widest font-semibold">
-                    Select a committee to continue
+                    Select a committee or continue as admin
                   </p>
                   <div className="mt-4 flex justify-center">
                     <button
-                      onClick={() => router.push("/admin")}
-                      className="text-[10px] text-white/5 hover:text-cyan-400/40 transition-colors uppercase tracking-[0.2em] font-medium"
+                      onClick={() => {
+                        setAdminEntry(true);
+                        setMatchedCommittee(null);
+                        setPasscodeInfo(null);
+                        setHint("Admin login selected. Enter admin passcode.");
+                        setStep("passcode");
+                      }}
+                      className="px-4 py-2 rounded-xl text-[11px] text-cyan-100 bg-cyan-600/20 border border-cyan-500/40 hover:bg-cyan-600/30 transition-colors uppercase tracking-[0.15em] font-semibold"
                     >
-                      Secretariat Admin
+                      Admin Login
                     </button>
                   </div>
                 </div>
@@ -341,9 +419,11 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     setStep("committee");
+                    setAdminEntry(false);
                     setPasscode("");
                     setHint("");
                     setError("");
+                    setPasscodeInfo(null);
                   }}
                   className="text-[11px] text-cyan-400/60 hover:text-cyan-400 transition-colors mb-2 block"
                 >
@@ -351,15 +431,15 @@ export default function LoginPage() {
                 </button>
                 <div>
                   <label className="block text-[11px] font-semibold text-cyan-200/60 mb-2 tracking-[0.1em] uppercase">
-                    Join Code / Admin Code
+                    {adminEntry ? "Admin Passcode" : "Join Code / Admin Code"}
                   </label>
                   <input
                     type="text"
                     value={passcode}
                     onChange={(e) => setPasscode(e.target.value.toUpperCase())}
                     className="w-full bg-[#0a1840]/60 border border-white/10 rounded-xl px-4 py-3 text-white text-center tracking-[0.3em] font-mono text-base outline-none focus:border-cyan-500/60 focus:shadow-[0_0_0_3px_rgba(15,200,255,0.1)] transition-all"
-                    placeholder="━ ━ ━ ━ ━"
-                    maxLength={10}
+                    placeholder={adminEntry ? "Enter admin code" : "━ ━ ━ ━ ━"}
+                    maxLength={24}
                     autoFocus
                     required
                   />
@@ -381,7 +461,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={
-                    loading || (passcode.length > 0 && !matchedCommittee)
+                    loading || (passcode.length > 0 && !matchedCommittee && !adminEntry)
                   }
                   className="w-full py-3 rounded-xl font-semibold text-sm tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 hover:shadow-[0_0_20px_rgba(14,165,233,0.3)] active:scale-[0.97]"
                 >

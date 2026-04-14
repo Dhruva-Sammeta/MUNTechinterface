@@ -12,7 +12,6 @@ import {
 import {
   MonitorSmartphone,
   Search,
-  UserPlus,
   ShieldAlert,
 } from "lucide-react";
 
@@ -62,7 +61,7 @@ export default function AdminPage() {
   const [newDelName, setNewDelName] = useState("");
   const [newDelCountry, setNewDelCountry] = useState("");
   const [newDelCommitteeId, setNewDelCommitteeId] = useState("");
-  const [newDelRole, setNewDelRole] = useState("delegate");
+  const [newDelRole, setNewDelRole] = useState("admin");
   const [isRegistering, setIsRegistering] = useState(false);
   const [showRegForm, setShowRegForm] = useState(false);
 
@@ -102,6 +101,31 @@ export default function AdminPage() {
     if (aRes.data) setAnnouncements(aRes.data as GlobalAnnouncement[]);
   }, [supabase]);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel("admin:live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sessions" },
+        () => loadAll(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "delegates" },
+        () => loadAll(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "global_announcements" },
+        () => loadAll(),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadAll, supabase]);
+
   // ---- Actions ----
   async function overrideMode(sessionId: string, mode: SessionMode) {
     const { error } = await supabase
@@ -137,20 +161,6 @@ export default function AdminPage() {
     toast.success("Announcement broadcast!");
     setNewAnnouncement("");
     loadAll();
-
-    // Broadcast via realtime to all active committee channels
-    committees.forEach((c) => {
-      const ch = supabase.channel(`committee:${c.id}`);
-      ch.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          ch.send({
-            type: "broadcast",
-            event: "announce:global",
-            payload: { content, createdAt: Date.now() },
-          }).then(() => supabase.removeChannel(ch));
-        }
-      });
-    });
   }
 
   async function updateDelegateRole(delegateId: string, newRole: string) {
@@ -290,7 +300,7 @@ export default function AdminPage() {
     }
   }
 
-  async function registerDelegate(e: React.FormEvent) {
+  async function registerAdminUser(e: React.FormEvent) {
     e.preventDefault();
     if (!newDelEmail || !newDelPassword || !newDelName || !newDelCommitteeId) {
       return toast.error("Missing required fields");
@@ -318,14 +328,14 @@ export default function AdminPage() {
       });
 
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Failed to register delegate");
+      if (!res.ok) throw new Error(result.error || "Failed to register admin");
 
-      // If backend returned a passcode (delegate/eb flow), show it so admin can copy/share
+      // Admin flow typically creates account immediately; keep passcode handling as compatibility fallback.
       if (result.passcode) {
         setGeneratedPasscode(result.passcode);
-        toast.success("Passcode created — copy and share with delegate");
+        toast.success("Code created — copy and share");
       } else {
-        toast.success("Delegate registered successfully");
+        toast.success("Admin account created successfully");
       }
       setShowRegForm(false);
       // Reset form
@@ -334,7 +344,7 @@ export default function AdminPage() {
       setNewDelName("");
       setNewDelCountry("");
       setNewDelCommitteeId("");
-      setNewDelRole("delegate");
+      setNewDelRole("admin");
       
       loadAll();
     } catch (err: any) {
@@ -352,8 +362,10 @@ export default function AdminPage() {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         if (!currentSession) throw new Error("Not authenticated");
 
-          // if pcPasscode is blank, autogenerate using committee prefix (DISEC1, DISEC2...)
-          const passcodeToSend = pcPasscode && pcPasscode.trim().length > 0 ? pcPasscode.trim().toUpperCase() : generateSequentialPasscodeForCommittee(pcCommitteeId);
+          // Backend now owns autogeneration + uniqueness checks.
+          const passcodeToSend = pcPasscode && pcPasscode.trim().length > 0
+            ? pcPasscode.trim().toUpperCase()
+            : undefined;
 
           const res = await fetch("/api/admin/passcodes/create", {
             method: "POST",
@@ -373,12 +385,11 @@ export default function AdminPage() {
         if (!res.ok) throw new Error(json.error || "Failed to create passcode");
 
         setGeneratedPasscode(json.passcode);
-        setShowPasscodeForm(false);
-        setPcCommitteeId("");
+        setShowPasscodeForm(true);
         setPcDisplayName("");
         setPcPasscode("");
-        setPcRole("delegate");
-        toast.success("Passcode created — copy and share with delegate");
+        toast.success("Passcode created — visible below, copy and share");
+        fetchPasscodes();
         loadAll();
       } catch (err: any) {
         toast.error(err.message);
@@ -416,25 +427,29 @@ export default function AdminPage() {
       }
     }, [supabase]);
 
-    function generateSequentialPasscodeForCommittee(committeeId: string) {
-      const committee = committees.find((c) => c.id === committeeId);
-      const prefix = (committee?.short_name || "CMT").replace(/\s+/g, "").toUpperCase();
-      // Find existing passcodes for this committee and extract numeric suffixes
-      const existing = passcodes.filter((p) => p.committee_id === committeeId && typeof p.display_name === "string");
-      const suffixes = existing
-        .map((p) => {
-          // match patterns like PREFIX123 or PREFIX1
-          const m = (p.display_name || "").toUpperCase().match(new RegExp(`${prefix}(\\d+)$`));
-          return m ? parseInt(m[1], 10) : null;
-        })
-        .filter((n) => !!n) as number[];
-      const next = (suffixes.length ? Math.max(...suffixes) : 0) + 1;
-      return `${prefix}${next}`;
-    }
-
     useEffect(() => {
       fetchPasscodes();
     }, [fetchPasscodes]);
+
+    useEffect(() => {
+      const channel = supabase
+        .channel("admin:passcodes:live")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "delegate_passcodes" },
+          () => fetchPasscodes(),
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "delegates" },
+          () => loadAll(),
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }, [fetchPasscodes, loadAll, supabase]);
 
     async function fetchReports() {
       try {
@@ -540,13 +555,12 @@ export default function AdminPage() {
 
         // Copy new passcode to clipboard and show to admin
         const newPlain = createJson.passcode;
+        setGeneratedPasscode(newPlain);
         try {
           await navigator.clipboard.writeText(newPlain);
           toast.success("Rotated passcode (copied to clipboard)");
         } catch {
           toast.success("Rotated passcode — copy manually:");
-          // fallback: show via generatedPasscode state so admin can copy
-          setGeneratedPasscode(newPlain);
         }
 
         fetchPasscodes();
@@ -839,28 +853,55 @@ export default function AdminPage() {
                       className="w-full bg-black/30 border border-white/10 rounded-xl pl-9 pr-3 py-2 text-xs outline-none focus:border-cyan-500/50 transition-colors"
                     />
                   </div>
-                  <button 
+                  <button
                     onClick={() => setShowRegForm(!showRegForm)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                      showRegForm 
-                        ? "bg-red-500/20 text-red-400 border border-red-500/30" 
-                        : "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
+                      showRegForm
+                        ? "bg-red-700/30 text-red-200 border border-red-400/40"
+                        : "bg-red-600/20 text-red-100 border border-red-400/40 hover:bg-red-600/30"
                     }`}
                   >
-                    {showRegForm ? "Cancel" : <><UserPlus size={14} /> Register New</>}
+                    {showRegForm ? "Close Admin Form" : <><ShieldAlert size={14} /> Register Admin</>}
                   </button>
                   <button
                     onClick={() => setShowPasscodeForm(!showPasscodeForm)}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                       showPasscodeForm
-                        ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                        : "bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30"
+                        ? "bg-emerald-700/30 text-emerald-100 border border-emerald-400/40"
+                        : "bg-emerald-600/20 text-emerald-100 border border-emerald-400/40 hover:bg-emerald-600/30"
                     }`}
                   >
-                    {showPasscodeForm ? "Cancel" : <><Key size={14} /> Create Passcode</>}
+                    {showPasscodeForm ? "Close Delegate/EB Form" : <><Key size={14} /> Register Delegate/EB</>}
                   </button>
                 </div>
               </div>
+
+              {generatedPasscode && (
+                <div className="mb-6 p-4 rounded-2xl border border-emerald-400/40 bg-emerald-500/10">
+                  <p className="text-[11px] uppercase tracking-[0.12em] text-emerald-200/80 font-semibold mb-2">
+                    Latest Generated Delegate/EB Code
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="px-4 py-2 rounded-lg bg-black/30 border border-emerald-300/30 font-mono tracking-widest text-lg text-emerald-100">
+                      {generatedPasscode}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(generatedPasscode);
+                          toast.success("Passcode copied to clipboard");
+                        } catch {
+                          toast.error("Copy failed");
+                        }
+                      }}
+                      className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 transition-colors"
+                    >
+                      Copy Code
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {showRegForm && (
                 <motion.div 
@@ -870,10 +911,14 @@ export default function AdminPage() {
                 >
                   <div className="flex items-center gap-3 mb-2">
                     <ShieldAlert size={18} className="text-amber-400" />
-                    <h3 className="text-sm font-bold uppercase tracking-wider">Admin User Registration</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Register Admin</h3>
                   </div>
-                  
-                  <form onSubmit={registerDelegate} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                  <p className="text-xs text-red-100/80 -mt-2">
+                    Use this only for secretariat/admin accounts with email and password login.
+                  </p>
+
+                  <form onSubmit={registerAdminUser} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Account Email</label>
                       <input 
@@ -898,20 +943,20 @@ export default function AdminPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Delegation Name</label>
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Display Name</label>
                       <input 
                         className="input-field text-xs bg-black/40 border-white/10 w-full" 
-                        placeholder="e.g. Republic of India"
+                        placeholder="e.g. Secretariat Admin"
                         required
                         value={newDelName}
                         onChange={e => setNewDelName(e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Country Alias (Optional)</label>
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Label (Optional)</label>
                       <input 
                         className="input-field text-xs bg-black/40 border-white/10 w-full" 
-                        placeholder="e.g. India"
+                        placeholder="e.g. Secretariat"
                         value={newDelCountry}
                         onChange={e => setNewDelCountry(e.target.value)}
                       />
@@ -931,26 +976,18 @@ export default function AdminPage() {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Role Authority</label>
-                      <select 
-                        className="input-field text-xs bg-black/40 border-white/10 w-full"
-                        required
-                        value={newDelRole}
-                        onChange={e => setNewDelRole(e.target.value)}
-                      >
-                        <option value="delegate">Delegate</option>
-                        <option value="eb">Executive Board (EB)</option>
-                        <option value="presentation">Presentation Screen</option>
-                        <option value="admin">Admin</option>
-                      </select>
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Account Type</label>
+                      <div className="input-field text-xs bg-black/40 border-red-400/30 w-full flex items-center text-red-100 font-semibold">
+                        Admin (fixed)
+                      </div>
                     </div>
                     <div className="md:col-span-2 lg:col-span-3 pt-2">
                       <button 
                         type="submit" 
                         disabled={isRegistering}
-                        className="w-full btn-primary py-3 font-bold tracking-widest uppercase hover:shadow-[0_0_20px_rgba(10,132,255,0.3)]"
+                        className="w-full py-3 rounded-xl font-bold tracking-widest uppercase bg-red-600 text-white hover:bg-red-500 transition-colors"
                       >
-                        {isRegistering ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Confirm and Create Account"}
+                        {isRegistering ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : "Register Admin"}
                       </button>
                     </div>
                   </form>
@@ -964,18 +1001,18 @@ export default function AdminPage() {
                   className="mb-8 p-6 rounded-2xl bg-white/5 border border-white/10 space-y-6"
                 >
                   <div className="p-3 rounded-md bg-black/20 border border-white/5">
-                    <h4 className="text-sm font-bold mb-1">How passcode generation works (simple steps)</h4>
+                    <h4 className="text-sm font-bold mb-1">How delegate/EB registration works</h4>
                     <ol className="text-xs list-decimal list-inside text-white/60">
-                      <li>Select the committee the delegate belongs to.</li>
+                      <li>Select the committee.</li>
                       <li>Enter the delegation name (e.g. Republic of India).</li>
-                      <li>Leave the passcode blank to auto-generate a sequential code for that committee (e.g. DISEC1, DISEC2) or enter a custom code.</li>
-                      <li>Click "Generate Passcode" — the new code will be shown and copied to your clipboard when possible.</li>
-                      <li>Share the code with the delegate; they use it on the Join page to claim their seat.</li>
+                      <li>Choose Delegate or EB role.</li>
+                        <li>Leave code blank to auto-generate a unique code (e.g. DISEC-8A3F), or enter custom code.</li>
+                      <li>Click Register Delegate/EB and share the code with the user.</li>
                     </ol>
                   </div>
                   <div className="flex items-center gap-3 mb-2">
-                    <Key size={18} className="text-amber-400" />
-                    <h3 className="text-sm font-bold uppercase tracking-wider">Generate Delegate Passcode</h3>
+                    <Key size={18} className="text-emerald-400" />
+                    <h3 className="text-sm font-bold uppercase tracking-wider">Register Delegate / EB</h3>
                   </div>
 
                   <form onSubmit={createPasscode} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -995,9 +1032,9 @@ export default function AdminPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Generated Delegate Passcode (optional override)</label>
-                      <input className="input-field text-xs bg-black/40 border-white/10 w-full font-mono tracking-widest" placeholder="Leave blank to auto-generate (e.g. DISEC1)" value={pcPasscode} onChange={e => setPcPasscode(e.target.value.toUpperCase())} />
-                      <p className="text-xs text-white/40">If left blank, the system will autogenerate sequential codes per committee (e.g. DISEC1, DISEC2, ...).</p>
+                      <label className="text-[10px] font-bold uppercase text-white/40 block ml-1">Join Code (optional override)</label>
+                        <input className="input-field text-xs bg-black/40 border-white/10 w-full font-mono tracking-widest" placeholder="Leave blank to auto-generate (e.g. DISEC-8A3F)" value={pcPasscode} onChange={e => setPcPasscode(e.target.value.toUpperCase())} />
+                        <p className="text-xs text-white/40">Custom code rules: 4-24 chars, use only A-Z, 0-9, underscore, or hyphen.</p>
                     </div>
 
                     <div className="space-y-2">
@@ -1010,11 +1047,12 @@ export default function AdminPage() {
 
                     <div className="col-span-3">
                       <div className="flex gap-2">
-                        <button type="submit" disabled={isCreatingPasscode} className="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-400 font-bold">{isCreatingPasscode ? "Creating…" : "Create Passcode"}</button>
+                        <button type="submit" disabled={isCreatingPasscode} className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-colors">{isCreatingPasscode ? "Creating…" : "Register Delegate/EB"}</button>
                         {generatedPasscode && (
                           <div className="ml-2 flex items-center gap-2">
                             <div className="px-3 py-2 rounded-lg bg-black/20 border border-white/5 font-mono tracking-widest">{generatedPasscode}</div>
                             <button
+                              type="button"
                               onClick={async () => {
                                 try {
                                   await navigator.clipboard.writeText(generatedPasscode);
