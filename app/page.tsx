@@ -5,10 +5,37 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Committee } from "@/lib/database.types";
 import Link from "next/link";
+import {
+  HARDCODED_ADMIN_PASSCODE,
+  HARDCODED_DEFAULT_DELEGATE_PASSCODE,
+  HARDCODED_DEFAULT_EB_PASSCODE,
+  getCommitteeHardcodedRoleForPasscode,
+  getHardcodedRoleForPasscode,
+} from "@/lib/auth/passcodes";
 
 // Authentication is strictly hierarchical: Start as delegate, then escalate.
 
 type LoginStep = "committee" | "passcode" | "delegation";
+
+function resolveDefaultCommitteeForHardcodedLogin(
+  committees: Committee[],
+): Committee | null {
+  if (!committees.length) return null;
+
+  const byJoinCode = committees.find(
+    (committee) =>
+      String(committee.join_code || "").trim().toUpperCase() ===
+      HARDCODED_DEFAULT_DELEGATE_PASSCODE,
+  );
+  if (byJoinCode) return byJoinCode;
+
+  const byShortName = committees.find((committee) =>
+    String(committee.short_name || "").trim().toUpperCase().includes("DISEC"),
+  );
+  if (byShortName) return byShortName;
+
+  return committees[0] || null;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -84,7 +111,7 @@ export default function LoginPage() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ committeeId }),
+          body: JSON.stringify({ committeeId, adminCode }),
         });
         const data = await res.json();
         if (res.ok && data?.success) return true;
@@ -126,9 +153,9 @@ export default function LoginPage() {
     const code = passcode.trim().toUpperCase();
 
     // Hardcoded admin override path
-    if (code === "86303") {
+    if (code === HARDCODED_ADMIN_PASSCODE) {
       try {
-          const ok = await bootstrapAdmin(matchedCommittee?.id || null, code);
+        const ok = await bootstrapAdmin(matchedCommittee?.id || null, code);
         if (!ok) {
           setLoading(false);
           return;
@@ -139,6 +166,43 @@ export default function LoginPage() {
       } finally {
         setLoading(false);
       }
+      return;
+    }
+
+    const universalHardcodedMatch = committees.find((committee) =>
+      getCommitteeHardcodedRoleForPasscode(code, committee.short_name),
+    );
+
+    const hardcodedRole =
+      getHardcodedRoleForPasscode(code) ||
+      (universalHardcodedMatch
+        ? getCommitteeHardcodedRoleForPasscode(code, universalHardcodedMatch.short_name)
+        : null);
+
+    if (hardcodedRole) {
+      const committeeForLogin =
+        matchedCommittee ||
+        universalHardcodedMatch ||
+        resolveDefaultCommitteeForHardcodedLogin(committees);
+
+      if (!committeeForLogin) {
+        setError("No committee available for hardcoded login.");
+        setLoading(false);
+        return;
+      }
+
+      if (!matchedCommittee) {
+        setMatchedCommittee(committeeForLogin);
+      }
+
+      setHint(
+        hardcodedRole === "eb"
+          ? "Hardcoded EB login accepted. Continue with your portfolio name."
+          : "Hardcoded delegate login accepted. Continue with your delegation name.",
+      );
+      setPasscodeInfo({ valid: true, role: hardcodedRole, hardcoded: true });
+      setStep("delegation");
+      setLoading(false);
       return;
     }
 
@@ -173,7 +237,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (res.ok && data?.valid && data?.role === "admin") {
-          const ok = await bootstrapAdmin(matchedCommittee?.id || null, code);
+        const ok = await bootstrapAdmin(matchedCommittee?.id || null, code);
         if (!ok) {
           setLoading(false);
           return;
@@ -435,7 +499,7 @@ export default function LoginPage() {
                   </div>
                 ) : (
                   <p className="text-xs text-center text-blue-200/40 py-4">
-                    No committees found. Use generic access code below.
+                    No committees are configured yet. Use admin login to continue setup.
                   </p>
                 )}
 
@@ -493,7 +557,11 @@ export default function LoginPage() {
                     value={passcode}
                     onChange={(e) => setPasscode(e.target.value.toUpperCase())}
                     className="w-full bg-[#0a1840]/60 border border-white/10 rounded-xl px-4 py-3 text-white text-center tracking-[0.3em] font-mono text-base outline-none focus:border-cyan-500/60 focus:shadow-[0_0_0_3px_rgba(15,200,255,0.1)] transition-all"
-                    placeholder={adminEntry ? "Enter admin code" : "e.g. ABCD or ABCD_EB"}
+                    placeholder={
+                      adminEntry
+                        ? ""
+                        : ""
+                    }
                     maxLength={24}
                     autoFocus
                     required
@@ -515,9 +583,7 @@ export default function LoginPage() {
 
                 <button
                   type="submit"
-                  disabled={
-                    loading || (passcode.length > 0 && !matchedCommittee && !adminEntry)
-                  }
+                  disabled={loading}
                   className="w-full py-3 rounded-xl font-semibold text-sm tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 hover:shadow-[0_0_20px_rgba(14,165,233,0.3)] active:scale-[0.97]"
                 >
                   {loading ? "Connecting…" : "Continue →"}
@@ -560,7 +626,7 @@ export default function LoginPage() {
                     value={delegation}
                     onChange={(e) => setDelegation(e.target.value)}
                     className="w-full bg-[#0a1840]/60 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-cyan-500/60 focus:shadow-[0_0_0_3px_rgba(15,200,255,0.1)] transition-all"
-                    placeholder="e.g. Republic of India"
+                    placeholder=""
                     autoFocus
                     required
                   />
@@ -585,8 +651,7 @@ export default function LoginPage() {
 
           {/* Footer note */}
           <p className="text-center text-[10px] text-blue-200/20 mt-6 relative">
-            Join your committee via join code first, then elevate access in
-            settings.
+            Use committee join credentials for delegates, or admin access for secretariat tools.
           </p>
         </div>
       </div>

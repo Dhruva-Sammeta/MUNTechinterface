@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import {
+  HARDCODED_ADMIN_PASSCODE,
+  normalizePasscodeInput,
+} from "@/lib/auth/passcodes";
 
 export async function POST(req: Request) {
   try {
@@ -14,10 +18,17 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const requestedCommitteeId =
       typeof body?.committeeId === "string" ? body.committeeId : null;
-    const adminCode = String(body?.adminCode || "").trim().toUpperCase();
+    const adminCode = normalizePasscodeInput(body?.adminCode);
+    const envAdminPass = normalizePasscodeInput(process.env.ADMIN_PASSCODE);
+    const validAdminCode =
+      adminCode === HARDCODED_ADMIN_PASSCODE ||
+      (!!envAdminPass && adminCode === envAdminPass);
 
     let userId: string | null = null;
     let bootstrapCredentials: { email: string; password: string } | null = null;
+    let existingDelegate:
+      | { id: string; committee_id: string; role: string }
+      | null = null;
 
     if (authHeader) {
       const token = authHeader.replace("Bearer ", "");
@@ -30,11 +41,27 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
       userId = user.id;
+
+      const { data: delegate, error: delegateErr } = await supabaseAdmin
+        .from("delegates")
+        .select("id,committee_id,role")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (delegateErr) {
+        return NextResponse.json({ error: delegateErr.message }, { status: 500 });
+      }
+
+      existingDelegate = (delegate as { id: string; committee_id: string; role: string } | null) ?? null;
+      const alreadyAdmin = existingDelegate?.role === "admin";
+
+      // Authenticated users must already be admin, unless a valid admin code is provided.
+      if (!alreadyAdmin && !validAdminCode) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     } else {
       // Fallback path for admin entry from picker when anonymous auth is disabled.
-      const envAdminPass = String(process.env.ADMIN_PASSCODE || "").toUpperCase();
-      const validAdmin = adminCode === "86303" || (!!envAdminPass && adminCode === envAdminPass);
-      if (!validAdmin) {
+      if (!validAdminCode) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
@@ -72,6 +99,16 @@ export async function POST(req: Request) {
         email: bootstrapEmail,
         password: bootstrapPassword,
       };
+
+      const { data: delegate, error: delegateErr } = await supabaseAdmin
+        .from("delegates")
+        .select("id,committee_id,role")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (delegateErr) {
+        return NextResponse.json({ error: delegateErr.message }, { status: 500 });
+      }
+      existingDelegate = (delegate as { id: string; committee_id: string; role: string } | null) ?? null;
     }
 
     if (!userId) {
@@ -80,12 +117,6 @@ export async function POST(req: Request) {
 
     // Keep existing committee when possible; otherwise fall back to selected committee
     // or the first available committee.
-    const { data: existingDelegate } = await supabaseAdmin
-      .from("delegates")
-      .select("id, committee_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
     let committeeId = existingDelegate?.committee_id ?? requestedCommitteeId;
     if (!committeeId) {
       const { data: firstCommittee } = await supabaseAdmin

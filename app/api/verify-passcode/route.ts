@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import {
+  HARDCODED_ADMIN_PASSCODE,
+  getCommitteeHardcodedRoleForPasscode,
+  getHardcodedRoleForPasscode,
+  normalizePasscodeInput,
+} from "@/lib/auth/passcodes";
 
 type PasscodeRow = {
   id: string;
@@ -14,10 +20,6 @@ type PasscodeRow = {
   expires_at: string | null;
   revoked: boolean | null;
 };
-
-function normalize(input: unknown): string {
-  return String(input || "").trim().toUpperCase();
-}
 
 function verifyHash(code: string, salt: string, hash: string) {
   const derived = crypto.pbkdf2Sync(code, salt, 310000, 32, "sha256").toString("hex");
@@ -63,16 +65,21 @@ async function hydratePasscodePlainFromAudit(supabaseAdmin: any, rows: PasscodeR
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const code = normalize(body?.code);
-    const committeeJoinCode = normalize(body?.committeeJoinCode);
+    const code = normalizePasscodeInput(body?.code);
+    const committeeJoinCode = normalizePasscodeInput(body?.committeeJoinCode);
 
     if (!code) {
       return NextResponse.json({ valid: false, error: "Missing code" }, { status: 400 });
     }
 
-    const envAdminPass = normalize(process.env.ADMIN_PASSCODE);
-    if (code === "86303" || (envAdminPass && code === envAdminPass)) {
+    const envAdminPass = normalizePasscodeInput(process.env.ADMIN_PASSCODE);
+    if (code === HARDCODED_ADMIN_PASSCODE || (envAdminPass && code === envAdminPass)) {
       return NextResponse.json({ valid: true, role: "admin" });
+    }
+
+    const hardcodedRole = getHardcodedRoleForPasscode(code);
+    if (hardcodedRole) {
+      return NextResponse.json({ valid: true, role: hardcodedRole });
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -88,6 +95,20 @@ export async function POST(req: Request) {
       }
       if (code === `${committeeJoinCode}_EB`) {
         return NextResponse.json({ valid: true, role: "eb" });
+      }
+
+      const { data: committeeForPattern } = await supabaseAdmin
+        .from("committees")
+        .select("short_name")
+        .eq("join_code", committeeJoinCode)
+        .maybeSingle();
+
+      const committeePatternRole = getCommitteeHardcodedRoleForPasscode(
+        code,
+        committeeForPattern?.short_name,
+      );
+      if (committeePatternRole) {
+        return NextResponse.json({ valid: true, role: committeePatternRole });
       }
     }
 
