@@ -1,5 +1,1 @@
-import { redirect } from "next/navigation";
-
-export default function JoinPage() {
-  redirect("/");
-}
+export { default } from "../page";

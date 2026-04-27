@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "db:reset": "supabase db reset",
+    "check:build": "npm run build"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

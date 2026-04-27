@@ -31,7 +31,7 @@ import { CHANNEL_NAME, EVENTS } from "./architecture";
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
-export type ClientRole = "eb" | "delegate" | "presentation" | "admin";
+export type ClientRole = "eb" | "delegate" | "admin";
 
 export interface PresenceState {
   clientId: string;
@@ -230,26 +230,6 @@ export class CommitteeChannel {
       this.announceListeners.forEach((l) => l(announce));
     });
 
-    // Persisted global announcement (Admin tab inserts DB row).
-    ch.on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "global_announcements",
-      },
-      (payload) => {
-        const row = payload.new as { content?: string; created_at?: string };
-        if (!row?.content) return;
-        const announce: AnnouncePayload = {
-          content: row.content,
-          createdAt: row.created_at
-            ? new Date(row.created_at).getTime()
-            : Date.now(),
-        };
-        this.announceListeners.forEach((l) => l(announce));
-      },
-    );
   }
 
   /* ── Presence Listeners ──────────────────────────────────────────────── */

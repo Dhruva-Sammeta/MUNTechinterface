@@ -1,23 +1,25 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { MessageScope, CommitteeMessage } from "@/lib/database.types";
 import { useChat } from "@/hooks/useChat";
-import { motion, AnimatePresence } from "framer-motion";
 import { 
   Send, 
-  Globe, 
+  Globe,
   MessageCircle, 
-  Users, 
   ShieldAlert, 
   Lock, 
   CheckCircle2, 
-  XCircle,
   Loader2,
   AlertTriangle,
   Clock
 } from "lucide-react";
 import { GlassPanel } from "@/components/ui/shared";
+
+type DelegateRef = {
+  id: string;
+  display_name?: string | null;
+  country?: string | null;
+};
 
 interface ChatHubProps {
   committeeId: string;
@@ -29,6 +31,8 @@ interface ChatHubProps {
   delegates: any[];
 }
 
+type ChatTab = "public" | "private" | "eb_chits" | "eb_review";
+
 export function ChatHub({ 
   committeeId, 
   sessionId, 
@@ -38,17 +42,33 @@ export function ChatHub({
   accentColor = "#0A84FF",
   delegates
 }: ChatHubProps) {
-  const [activeTab, setActiveTab] = useState<MessageScope>("public");
+  const [activeTab, setActiveTab] = useState<ChatTab>("public");
   const [inputText, setInputText] = useState("");
-  const [selectedRecipient, setSelectedRecipient] = useState<string | null>(null);
+  const [recipientId, setRecipientId] = useState("");
+  const [visibleToEb, setVisibleToEb] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const isEbView = delegateRole === "eb" || delegateRole === "admin";
 
   const { messages, decryptedCache, isLoading, sendMessage, approveMessage, reportMessage } = useChat(
     committeeId, 
     sessionId, 
     delegateId,
+    delegateRole,
     blocId
   );
+
+  const directRecipients = delegates
+    .filter((d: any) => d.id !== delegateId && d.role === "delegate")
+    .sort((a: any, b: any) => a.country.localeCompare(b.country));
+
+  useEffect(() => {
+    if (recipientId) {
+      const stillExists = directRecipients.some((d: any) => d.id === recipientId);
+      if (stillExists) return;
+    }
+    setRecipientId(directRecipients[0]?.id || "");
+  }, [directRecipients, recipientId]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -57,50 +77,65 @@ export function ChatHub({
     }
   }, [messages, decryptedCache]);
 
-  const filteredMessages = messages.filter(m => {
-    if (activeTab === "public") return m.scope === "public";
-    if (activeTab === "eb") return m.scope === "eb";
-    if (activeTab === "bloc") return m.scope === "bloc";
-    if (activeTab === "private") {
-      // For private, only show if matched with selectedRecipient or any private message if not selected
-      if (selectedRecipient) {
-        return m.scope === "private" && (
-          (m.sender_id === delegateId && m.recipient_id === selectedRecipient) ||
-          (m.sender_id === selectedRecipient && m.recipient_id === delegateId)
-        );
+  const filteredMessages = messages
+    .filter((m) => {
+      if (activeTab === "public") {
+        return m.scope === "public";
       }
-      return m.scope === "private";
-    }
-    return false;
-  });
+
+      if (activeTab === "private") {
+        if (m.scope !== "private") return false;
+        return m.sender_id === delegateId || m.recipient_id === delegateId;
+      }
+
+      if (activeTab === "eb_chits") {
+        if (!isEbView || m.scope !== "private") return false;
+        return m.sender_id === delegateId || m.recipient_id === delegateId;
+      }
+
+      if (activeTab === "eb_review") {
+        return isEbView && m.scope === "private" && Boolean((m as any).visible_to_eb);
+      }
+      return false;
+    })
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!inputText.trim()) return;
 
-    await sendMessage(
-      inputText.trim(),
-      activeTab,
-      selectedRecipient || undefined,
-      activeTab === "bloc" ? (blocId || undefined) : undefined
-    );
+    if (activeTab === "eb_review") {
+      return;
+    }
+
+    if (activeTab === "public") {
+      await sendMessage(inputText.trim(), "public");
+      setInputText("");
+      return;
+    }
+
+    if (activeTab === "eb_chits") {
+      await sendMessage(inputText.trim(), "private", recipientId, undefined, { visibleToEb: true });
+      setInputText("");
+      return;
+    }
+
+    await sendMessage(inputText.trim(), "private", recipientId, undefined, { visibleToEb });
     
     setInputText("");
   };
 
-  const tabs: { id: MessageScope; label: string; icon: any; color: string }[] = [
-    { id: "public", label: "Global", icon: Globe, color: accentColor },
-    { id: "private", label: "Private", icon: MessageCircle, color: "#FFB800" },
-    { id: "bloc", label: "Alliance", icon: Users, color: "#30D158" },
-    { id: "eb", label: "EB Desk", icon: ShieldAlert, color: "#FF3B30" },
+  const tabs: { id: ChatTab; label: string; icon: any; color: string }[] = [
+    { id: "public", label: "Public", icon: Globe, color: accentColor },
+    ...(isEbView
+      ? [
+          { id: "eb_chits" as ChatTab, label: "EB Chits", icon: MessageCircle, color: "#22c55e" },
+          { id: "eb_review" as ChatTab, label: "EB View", icon: ShieldAlert, color: "#f59e0b" },
+        ]
+      : [{ id: "private" as ChatTab, label: "Direct", icon: MessageCircle, color: accentColor }]),
   ];
 
-  // Only EB sees EB Desk, and only Bloc members see Bloc tab
-  const visibleTabs = tabs.filter(t => {
-    if (t.id === "eb" && delegateRole !== "eb" && delegateRole !== "admin") return false;
-    if (t.id === "bloc" && !blocId && (delegateRole !== "eb" && delegateRole !== "admin")) return false;
-    return true;
-  });
+  const visibleTabs = tabs;
 
   return (
     <div className="flex h-full min-h-[500px] gap-3">
@@ -133,27 +168,21 @@ export function ChatHub({
               })()}
             </div>
             <div>
-              <h3 className="text-sm font-bold capitalize">{activeTab} Chat</h3>
+              <h3 className="text-sm font-bold capitalize">
+                {activeTab === "public"
+                  ? "Public Chat"
+                  : activeTab === "private"
+                    ? "Direct Chat"
+                    : activeTab === "eb_chits"
+                      ? "EB Chits"
+                      : "EB Flagged Direct Chat"}
+              </h3>
               <p className="text-[10px] text-white/30 flex items-center gap-1">
-                <Lock size={8} /> Secure Scope-Based Encryption
+                <Lock size={8} /> End-to-end scoped encryption
               </p>
             </div>
           </div>
           
-          {activeTab === "private" && (
-            <select
-              value={selectedRecipient || ""}
-              onChange={(e) => setSelectedRecipient(e.target.value || null)}
-              className="bg-black/40 border border-white/10 rounded-lg text-xs px-2 py-1 outline-none"
-            >
-              <option value="">Select Recipient...</option>
-              {delegates
-                .filter((d: any) => d.id !== delegateId && d.role === "delegate")
-                .map((d: any) => (
-                  <option key={d.id} value={d.id}>{d.country}</option>
-                ))}
-            </select>
-          )}
         </div>
 
         {/* Message Feed */}
@@ -172,17 +201,16 @@ export function ChatHub({
               <p className="text-sm italic">No messages in this scope yet.</p>
             </div>
             ) : (
-            filteredMessages.map((msg, i) => (
+            filteredMessages.map((msg) => (
               <ChatMessage 
                 key={msg.id} 
                 msg={msg} 
                 isMine={msg.sender_id === delegateId}
                 plaintext={decryptedCache[msg.id] || "Decrypting..."}
                 delegates={delegates}
-                isEBView={delegateRole === "eb" || delegateRole === "admin"}
+                isEBView={isEbView}
                 onApprove={() => approveMessage(msg.id)}
                 onReport={async (reason: string | null) => await reportMessage(msg.id, reason || undefined)}
-                myDelegateId={delegateId}
               />
             ))
           )}
@@ -190,6 +218,41 @@ export function ChatHub({
 
         {/* Footer / Input */}
         <div className="p-2 border-t border-white/5 bg-white/5">
+          {(activeTab === "private" || activeTab === "eb_chits") && (
+            <div className="mb-2 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 px-1">
+              <select
+                value={recipientId}
+                onChange={(e) => setRecipientId(e.target.value)}
+                className="bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm"
+              >
+                {directRecipients.length === 0 ? (
+                  <option value="">No delegates available</option>
+                ) : (
+                  directRecipients.map((d: any) => (
+                    <option key={d.id} value={d.id}>
+                      {d.country} - {d.display_name}
+                    </option>
+                  ))
+                )}
+              </select>
+
+              {activeTab === "private" ? (
+                <label className="inline-flex items-center gap-2 text-xs text-white/70 px-2">
+                  <input
+                    type="checkbox"
+                    checked={visibleToEb}
+                    onChange={(e) => setVisibleToEb(e.target.checked)}
+                  />
+                  Mark visible to EB
+                </label>
+              ) : (
+                <div className="inline-flex items-center gap-2 text-xs text-emerald-200/80 px-2 rounded-xl border border-emerald-300/30 bg-emerald-500/10">
+                  EB chits are marked visible to EB automatically
+                </div>
+              )}
+            </div>
+          )}
+
           <form 
             onSubmit={handleSend}
             className="flex gap-2 items-center"
@@ -198,41 +261,55 @@ export function ChatHub({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={`Send message to ${activeTab}...`}
+              placeholder={
+                activeTab === "public"
+                  ? "Send message to public chat..."
+                  : activeTab === "private"
+                  ? "Send direct message..."
+                  : activeTab === "eb_chits"
+                    ? "Send EB chit..."
+                    : "EB review is read-only"
+              }
+              disabled={activeTab === "eb_review" || ((activeTab === "private" || activeTab === "eb_chits") && !recipientId)}
               className="flex-1 bg-white/5 border border-white/5 rounded-xl px-4 py-3 text-sm focus:border-white/20 outline-none transition-all"
             />
             <button
               type="submit"
-              disabled={!inputText.trim() || (activeTab === "private" && !selectedRecipient)}
+              disabled={
+                !inputText.trim() ||
+                activeTab === "eb_review" ||
+                ((activeTab === "private" || activeTab === "eb_chits") && !recipientId)
+              }
               className="p-3 rounded-xl bg-white/10 hover:bg-white/20 transition-all disabled:opacity-20"
               style={{ color: accentColor }}
             >
               <Send size={18} />
             </button>
           </form>
-          {activeTab === "private" && !selectedRecipient && (
-            <p className="text-[10px] text-amber-500 mt-2 text-center">
-              Please select a recipient to start a private chat.
-            </p>
-          )}
         </div>
       </GlassPanel>
     </div>
   );
 }
 
-function ChatMessage({ msg, isMine, plaintext, delegates, isEBView, onApprove, onReport, myDelegateId }: any) {
-  const sender = delegates.find((d: any) => d.id === msg.sender_id);
-  const recipient = delegates.find((d: any) => d.id === msg.recipient_id);
+function getSenderLabel(delegate: DelegateRef | undefined, isMine: boolean) {
+  if (isMine) return "You";
+  return delegate?.display_name || delegate?.country || "Unknown Delegate";
+}
+
+function ChatMessage({ msg, isMine, plaintext, delegates, isEBView, onApprove, onReport }: any) {
+  const sender = (delegates as DelegateRef[]).find((d) => d.id === msg.sender_id);
+  const recipient = (delegates as DelegateRef[]).find((d) => d.id === msg.recipient_id);
+  const senderLabel = getSenderLabel(sender, isMine);
+  const senderIdentity = sender?.display_name || sender?.country || "Unknown Delegate";
+  const recipientLabel = recipient?.display_name || recipient?.country || "Unknown Delegate";
 
   return (
     <div className={`flex flex-col ${isMine ? "items-end" : "items-start"} max-w-[85%] ${isMine ? "ml-auto" : "mr-auto"}`}>
       <div className="flex items-center gap-2 mb-1 px-1">
-        {!isMine && (
-          <span className="text-[10px] font-bold opacity-60">
-            {sender?.country || "Secretariat"}
-          </span>
-        )}
+        <span className="text-[10px] font-bold opacity-70">
+          {senderLabel}
+        </span>
         <span className="text-[8px] opacity-20 flex items-center gap-1">
           <Clock size={8} /> {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </span>
@@ -247,7 +324,12 @@ function ChatMessage({ msg, isMine, plaintext, delegates, isEBView, onApprove, o
       >
         {msg.scope === "private" && (
           <div className="text-[8px] uppercase tracking-widest mb-1 pb-1 border-b border-white/5 flex items-center gap-1 opacity-40">
-            <Lock size={8} /> Chit {isMine ? `to ${recipient?.country}` : `from ${sender?.country}`}
+            <Lock size={8} /> Direct: {senderIdentity}{" -> "}{recipientLabel}
+            {Boolean((msg as any).visible_to_eb) ? (
+              <span className="ml-2 rounded-full border border-amber-300/40 px-1.5 py-0.5 text-[8px] text-amber-200">
+                EB Visible
+              </span>
+            ) : null}
           </div>
         )}
 

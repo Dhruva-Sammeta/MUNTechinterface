@@ -1,16 +1,5 @@
 "use client";
 
-/**
- * useConferenceData — Shared hook for loading + subscribing to all persistent
- * conference data from Supabase. Used by Delegate, EB, and Presentation pages.
- *
- * RULES:
- * - All truth comes from Supabase (postgres_changes realtime)
- * - NO localStorage, NO local DB, NO hallucinated caches
- * - On disconnect: UI shows last-known state + reconnecting indicator
- * - On reconnect: full refetch, state replaced (never merged)
- */
-
 import { useEffect, useState, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAppStore } from "@/lib/store";
@@ -19,39 +8,29 @@ import type {
   Delegate,
   Session,
   SessionMode,
-  Chit,
+  ChitWithDelegates,
   Document as MUNDocument,
-  Bloc,
-  BlocMember,
+  BlocWithMembers,
   VotingRound,
   Vote as VoteType,
-  ChitWithDelegates,
-  BlocWithMembers,
-  BlocMemberWithDelegate,
 } from "@/lib/database.types";
 
 type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
 
 interface ConferenceData {
-  // Core entities
   committee: Committee | null;
   delegate: Delegate | null;
   session: Session | null;
   delegates: Delegate[];
-
-  // Sub-data
   chits: ChitWithDelegates[];
   documents: MUNDocument[];
   blocs: BlocWithMembers[];
   activeRound: VotingRound | null;
   voteTally: { for: number; against: number; abstain: number };
   myVote: VoteType | null;
-
-  // Status
   connectionStatus: ConnectionStatus;
   isLoading: boolean;
-
-  // Refetch
+  error: string | null;
   refetchChits: () => Promise<void>;
   refetchDocuments: () => Promise<void>;
   refetchDelegates: () => Promise<void>;
@@ -61,261 +40,184 @@ interface ConferenceData {
 
 export function useConferenceData(committeeId: string): ConferenceData {
   const supabase = createClient();
-  const {
-    setCurrentCommittee,
-    setCurrentDelegate,
-    setCurrentSession,
-    setMode,
-  } = useAppStore();
+  const { setCurrentCommittee, setCurrentDelegate, setCurrentSession, setMode } = useAppStore();
 
   const [committee, setCommittee] = useState<Committee | null>(null);
   const [delegate, setDelegate] = useState<Delegate | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [delegates, setDelegates] = useState<Delegate[]>([]);
-  const [chits, setChits] = useState<ChitWithDelegates[]>([]);
-  const [documents, setDocuments] = useState<MUNDocument[]>([]);
-  const [blocs, setBlocs] = useState<BlocWithMembers[]>([]);
-  const [activeRound, setActiveRound] = useState<VotingRound | null>(null);
-  const [voteTally, setVoteTally] = useState({
-    for: 0,
-    against: 0,
-    abstain: 0,
-  });
-  const [myVote, setMyVote] = useState<VoteType | null>(null);
-  const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>("disconnected");
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("disconnected");
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const sessionRef = useRef<Session | null>(null);
-  const delegateRef = useRef<Delegate | null>(null);
 
-  // Keep refs in sync
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
-  useEffect(() => {
-    delegateRef.current = delegate;
-  }, [delegate]);
 
-  // ── Fetchers (stable via useCallback) ───────────────────────────────────
+  useEffect(() => {
+    if (!isLoading) return;
+
+    const watchdog = window.setTimeout(() => {
+      setError((prev) => prev || "Connection timed out. Showing available data.");
+      setIsLoading(false);
+    }, 9000);
+
+    return () => {
+      window.clearTimeout(watchdog);
+    };
+  }, [isLoading]);
 
   const refetchDelegates = useCallback(async () => {
-    const { data } = await supabase
-      .from("delegates")
-      .select("*")
-      .eq("committee_id", committeeId);
-    if (data) setDelegates(data as Delegate[]);
+    try {
+      const { data, error } = await supabase
+        .from("delegates")
+        .select("*")
+        .eq("committee_id", committeeId)
+        .order("joined_at", { ascending: false });
+
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      if (data) {
+        setDelegates(data as Delegate[]);
+        setError(null);
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to load delegates.");
+    }
   }, [committeeId, supabase]);
 
   const refetchChits = useCallback(async () => {
-    const sess = sessionRef.current;
-    const del = delegateRef.current;
-    if (!sess?.id || !del?.id) return;
-
-    // EB/admin: see all chits for the session
-    // Delegate: see chits they sent or received (approved only for received)
-    if (del.role === "eb" || del.role === "admin") {
-      const { data } = await supabase
-        .from("chits")
-        .select(
-          "*, from_delegate:from_delegate_id(id,display_name,country), to_delegate:to_delegate_id(id,display_name,country)",
-        )
-        .eq("session_id", sess.id)
-        .order("sent_at", { ascending: false });
-      if (data) setChits(data as unknown as ChitWithDelegates[]);
-    } else {
-      const { data } = await supabase
-        .from("chits")
-        .select(
-          "*, from_delegate:from_delegate_id(id,display_name,country), to_delegate:to_delegate_id(id,display_name,country)",
-        )
-        .eq("session_id", sess.id)
-        .or(
-          `from_delegate_id.eq.${del.id},and(to_delegate_id.eq.${del.id},is_approved.eq.true)`,
-        )
-        .order("sent_at", { ascending: false });
-      if (data) setChits(data as unknown as ChitWithDelegates[]);
-    }
-  }, [committeeId, supabase]);
+    // Canonical schema does not include chits.
+  }, []);
 
   const refetchDocuments = useCallback(async () => {
-    const sess = sessionRef.current;
-    const del = delegateRef.current;
-    if (!sess?.id) return;
+    // Canonical schema does not include documents.
+  }, []);
 
-    if (del?.role === "eb" || del?.role === "admin") {
-      // EB sees all docs
-      const { data } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("committee_id", committeeId)
-        .order("uploaded_at", { ascending: false });
-      if (data) setDocuments(data as MUNDocument[]);
-    } else {
-      // Delegates see approved docs + their own pending
-      const { data } = await supabase
-        .from("documents")
-        .select("*")
-        .eq("committee_id", committeeId)
-        .or(`status.eq.approved,uploaded_by.eq.${del?.id}`)
-        .order("uploaded_at", { ascending: false });
-      if (data) setDocuments(data as MUNDocument[]);
-    }
-  }, [committeeId, supabase]);
-
-  const refetchVoteTally = useCallback(
-    async (roundId: string) => {
-      const { data } = await supabase
-        .from("votes")
-        .select("position")
-        .eq("voting_round_id", roundId);
-      if (data) {
-        const t = { for: 0, against: 0, abstain: 0 };
-        (data as VoteType[]).forEach((v) => {
-          t[v.position as keyof typeof t]++;
-        });
-        setVoteTally(t);
-      }
-      // Check my vote
-      const del = delegateRef.current;
-      if (del) {
-        const { data: mv } = await supabase
-          .from("votes")
-          .select("*")
-          .eq("voting_round_id", roundId)
-          .eq("delegate_id", del.id)
-          .maybeSingle();
-        setMyVote(mv as VoteType | null);
-      }
-    },
-    [supabase],
-  );
-
-  const refetchVotingRounds = useCallback(async () => {
-    const sess = sessionRef.current;
-    if (!sess?.id) return;
-    const { data } = await supabase
-      .from("voting_rounds")
-      .select("*")
-      .eq("session_id", sess.id)
-      .order("opened_at", { ascending: false });
-    if (data) {
-      const open = (data as VotingRound[]).find((r) => r.status === "open");
-      setActiveRound(open ?? null);
-      if (open) refetchVoteTally(open.id);
-    }
-  }, [supabase, refetchVoteTally]);
+  const refetchVoteTally = useCallback(async (_roundId: string) => {
+    // Canonical schema does not include voting_rounds or votes.
+  }, []);
 
   const refetchBlocs = useCallback(async () => {
-    const sess = sessionRef.current;
-    if (!sess?.id) return;
-    const { data } = await supabase
-      .from("blocs")
-      .select(
-        "*, members:bloc_members(*, delegate:delegate_id(id,display_name,country))",
-      )
-      .eq("session_id", sess.id)
-      .order("created_at", { ascending: false });
-    if (data) setBlocs(data as unknown as BlocWithMembers[]);
-  }, [supabase]);
-
-  // ── Initial load ────────────────────────────────────────────────────────
+    // Canonical schema does not include blocs.
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setIsLoading(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user || cancelled) {
-        setIsLoading(false);
-        return;
-      }
+      setError(null);
 
-      // Fetch committee + delegate in parallel
-      const [cRes, dRes] = await Promise.all([
-        supabase.from("committees").select("*").eq("id", committeeId).maybeSingle(),
-        supabase.from("delegates").select("*").eq("user_id", user.id).maybeSingle(),
-      ]);
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
 
-      if (cRes.data) {
-        const c = cRes.data as Committee;
-        setCommittee(c);
-        setCurrentCommittee(c);
-      }
-      if (dRes.data) {
-        const d = dRes.data as Delegate;
-        setDelegate(d);
-        setCurrentDelegate(d);
-      }
+        const [committeeRes, delegateRes] = await Promise.all([
+          supabase.from("committees").select("*").eq("id", committeeId).maybeSingle(),
+          user
+            ? supabase.from("delegates").select("*").eq("user_id", user.id).maybeSingle()
+            : Promise.resolve({ data: null, error: null } as any),
+        ]);
 
-      // Get or create today's session
-      const today = new Date().toISOString().split("T")[0];
-      let { data: sess } = await supabase
-        .from("sessions")
-        .select("*")
-        .eq("committee_id", committeeId)
-        .eq("date", today)
-        .maybeSingle();
+        if (cancelled) return;
 
-      // If EB/admin and no session exists, auto-create
-      if (
-        !sess &&
-        dRes.data &&
-        (dRes.data.role === "eb" || dRes.data.role === "admin")
-      ) {
-        const { data: newSess } = await supabase
+        if (committeeRes.error) {
+          throw new Error(committeeRes.error.message);
+        }
+
+        if (delegateRes.error) {
+          throw new Error(delegateRes.error.message);
+        }
+
+        if (committeeRes.data) {
+          const value = committeeRes.data as Committee;
+          setCommittee(value);
+          setCurrentCommittee(value);
+        }
+
+        if (delegateRes.data) {
+          const value = delegateRes.data as Delegate;
+          setDelegate(value);
+          setCurrentDelegate(value);
+        } else {
+          setDelegate(null);
+          setCurrentDelegate(null);
+        }
+
+        const today = new Date().toISOString().split("T")[0];
+        let { data: todaysSession, error: sessionError } = await supabase
           .from("sessions")
-          .insert({ committee_id: committeeId, date: today })
-          .select()
+          .select("*")
+          .eq("committee_id", committeeId)
+          .eq("date", today)
           .maybeSingle();
-        sess = newSess;
+
+        if (sessionError) {
+          throw new Error(sessionError.message);
+        }
+
+        if (
+          !todaysSession &&
+          delegateRes.data &&
+          (delegateRes.data.role === "eb" || delegateRes.data.role === "admin")
+        ) {
+          const { data: inserted, error: insertError } = await supabase
+            .from("sessions")
+            .insert({ committee_id: committeeId, date: today })
+            .select("*")
+            .maybeSingle();
+
+          if (insertError) {
+            throw new Error(insertError.message);
+          }
+
+          todaysSession = inserted;
+        }
+
+        if (todaysSession) {
+          const value = todaysSession as Session;
+          setSession(value);
+          setCurrentSession(value);
+          setMode(value.mode as SessionMode);
+        }
+
+        await refetchDelegates();
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || "Unable to load conference data.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
-
-      if (cancelled) return;
-
-      if (sess) {
-        const s = sess as Session;
-        setSession(s);
-        setCurrentSession(s);
-        setMode(s.mode as SessionMode);
-      }
-
-      // Load sub-data
-      await Promise.all([
-        refetchDelegates(),
-        refetchChits(),
-        refetchDocuments(),
-        refetchVotingRounds(),
-        refetchBlocs(),
-      ]);
-
-      if (!cancelled) setIsLoading(false);
     }
 
     load();
     return () => {
       cancelled = true;
     };
-  }, [committeeId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Realtime subscriptions ──────────────────────────────────────────────
+  }, [committeeId, refetchDelegates, setCurrentCommittee, setCurrentDelegate, setCurrentSession, setMode, supabase]);
 
   useEffect(() => {
-    // Always create a channel to avoid showing "Reconnecting..." falsely,
-    // and to listen for session creation if one doesn't exist yet!
-    const channelName = session?.id 
-      ? `conference_data:${session.id}` 
+    const channelName = session?.id
+      ? `conference_data:${session.id}`
       : `conference_data_waiting:${committeeId}`;
 
     const channel = supabase.channel(channelName);
 
     if (session?.id) {
-      // 1. We have an active session — subscribe to all session-scoped events
       channel
         .on(
           "postgres_changes",
@@ -326,52 +228,10 @@ export function useConferenceData(committeeId: string): ConferenceData {
             filter: `id=eq.${session.id}`,
           },
           (payload) => {
-            const newSession = payload.new as Session;
-            setSession(newSession);
-            setCurrentSession(newSession);
-            setMode(newSession.mode as SessionMode);
-          },
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "chits",
-            filter: `session_id=eq.${session.id}`,
-          },
-          () => refetchChits(),
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "documents",
-            filter: `committee_id=eq.${committeeId}`,
-          },
-          () => refetchDocuments(),
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "voting_rounds",
-            filter: `session_id=eq.${session.id}`,
-          },
-          () => refetchVotingRounds(),
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "votes",
-            filter: `session_id=eq.${session.id}`,
-          },
-          () => {
-            if (activeRound) refetchVoteTally(activeRound.id);
+            const updated = payload.new as Session;
+            setSession(updated);
+            setCurrentSession(updated);
+            setMode(updated.mode as SessionMode);
           },
         )
         .on(
@@ -382,55 +242,20 @@ export function useConferenceData(committeeId: string): ConferenceData {
             table: "delegates",
             filter: `committee_id=eq.${committeeId}`,
           },
-          () => refetchDelegates(),
-        )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "blocs",
-            filter: `session_id=eq.${session.id}`,
+          () => {
+            void refetchDelegates();
           },
-          () => refetchBlocs(),
         )
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "bloc_members",
-          },
-          () => refetchBlocs(),
-        );
-
-      // Fetch fresh session to snap timer immediately on subscribe
-      async function refetchSession() {
-        const { data } = await supabase
-          .from("sessions")
-          .select("*")
-          .eq("id", session!.id)
-          .maybeSingle();
-        if (data) {
-          const s = data as Session;
-          setSession(s);
-          setCurrentSession(s);
-          setMode(s.mode as SessionMode);
-        }
-      }
-
-      channel.subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          setConnectionStatus("connected");
-          refetchSession();
-        } else if (status === "CHANNEL_ERROR") {
-          setConnectionStatus("reconnecting");
-        } else if (status === "CLOSED") {
-          setConnectionStatus("disconnected");
-        }
-      });
+        .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            setConnectionStatus("connected");
+          } else if (status === "CHANNEL_ERROR") {
+            setConnectionStatus("reconnecting");
+          } else if (status === "CLOSED") {
+            setConnectionStatus("disconnected");
+          }
+        });
     } else {
-      // 2. No active session yet — listen for one to be created by the EB
       channel
         .on(
           "postgres_changes",
@@ -441,10 +266,10 @@ export function useConferenceData(committeeId: string): ConferenceData {
             filter: `committee_id=eq.${committeeId}`,
           },
           (payload) => {
-            const newSession = payload.new as Session;
-            setSession(newSession);
-            setCurrentSession(newSession);
-            setMode(newSession.mode as SessionMode);
+            const created = payload.new as Session;
+            setSession(created);
+            setCurrentSession(created);
+            setMode(created.mode as SessionMode);
           },
         )
         .on(
@@ -455,7 +280,9 @@ export function useConferenceData(committeeId: string): ConferenceData {
             table: "delegates",
             filter: `committee_id=eq.${committeeId}`,
           },
-          () => refetchDelegates(),
+          () => {
+            void refetchDelegates();
+          },
         )
         .subscribe((status) => {
           if (status === "SUBSCRIBED") {
@@ -471,21 +298,91 @@ export function useConferenceData(committeeId: string): ConferenceData {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session?.id, activeRound?.id, committeeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [committeeId, refetchDelegates, session?.id, setCurrentSession, setMode, supabase]);
+
+  useEffect(() => {
+    if (!committeeId) return;
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const pollSession = async () => {
+      if (inFlight || cancelled) return;
+      inFlight = true;
+
+      try {
+        const activeSessionId = sessionRef.current?.id;
+
+        if (activeSessionId) {
+          const { data } = await supabase
+            .from("sessions")
+            .select("*")
+            .eq("id", activeSessionId)
+            .maybeSingle();
+
+          if (!cancelled && data) {
+            const live = data as Session;
+            const current = sessionRef.current;
+            const changed =
+              !current ||
+              current.mode !== live.mode ||
+              current.agenda_text !== live.agenda_text ||
+              current.timer_duration_s !== live.timer_duration_s ||
+              current.timer_started_at !== live.timer_started_at ||
+              current.timer_paused !== live.timer_paused;
+
+            if (changed) {
+              setSession(live);
+              setCurrentSession(live);
+              setMode(live.mode as SessionMode);
+            }
+          }
+        } else {
+          const today = new Date().toISOString().split("T")[0];
+          const { data } = await supabase
+            .from("sessions")
+            .select("*")
+            .eq("committee_id", committeeId)
+            .eq("date", today)
+            .maybeSingle();
+
+          if (!cancelled && data) {
+            const live = data as Session;
+            setSession(live);
+            setCurrentSession(live);
+            setMode(live.mode as SessionMode);
+          }
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void pollSession();
+    const interval = window.setInterval(() => {
+      void pollSession();
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [committeeId, setCurrentSession, setMode, supabase]);
 
   return {
     committee,
     delegate,
     session,
     delegates,
-    chits,
-    documents,
-    blocs,
-    activeRound,
-    voteTally,
-    myVote,
+    chits: [],
+    documents: [],
+    blocs: [],
+    activeRound: null,
+    voteTally: { for: 0, against: 0, abstain: 0 },
+    myVote: null,
     connectionStatus,
     isLoading,
+    error,
     refetchChits,
     refetchDocuments,
     refetchDelegates,

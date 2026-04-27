@@ -8,16 +8,16 @@
  *
  *  This single channel carries ALL event types for a session, scoped to
  *  the committee. This avoids channel fragmentation and ensures all clients
- *  (Delegate, EB, Presentation) on the same channel receive every event.
+ *  (Delegate, EB, Admin) on the same channel receive every event.
  *
  *  Presence is used for:
- *    - Tracking who is connected (delegates, EB, presentation clients)
+ *    - Tracking who is connected (delegates, EB, admin clients)
  *    - Triggering state recovery on reconnect (EB re-broadcasts when new
  *      client joins — detected via Presence SYNC event)
  *
  * ─── EVENT FLOW ───────────────────────────────────────────────────────────
  *
- *  EB              →  BROADCAST  →  All clients (Delegate + Presentation)
+ *  EB              →  BROADCAST  →  All clients (Delegate + Admin)
  *  DB update       →  POSTGRES_CHANGES  →  All clients (via sessions table)
  *
  *  Speaker Queue Events (BROADCAST only — no DB):

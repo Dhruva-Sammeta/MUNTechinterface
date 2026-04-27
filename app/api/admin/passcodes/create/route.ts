@@ -1,116 +1,202 @@
+import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { createSupabaseAdmin } from "@/lib/server/supabaseAdmin";
-import {
-  derivePasscodeHash,
-  generateSalt,
-  generateUniqueCommitteeCode,
-  isValidCode,
-  listCommitteePasscodes,
-  matchesCode,
-  normalizeCode,
-} from "@/lib/server/passcodes";
+import crypto from "crypto";
 
-async function ensureAdminUser(accessToken: string) {
-  const admin = createSupabaseAdmin();
-  const {
-    data: { user },
-    error: userError,
-  } = await admin.auth.getUser(accessToken);
-  if (userError || !user) return null;
+const PASSCODE_REGEX = /^[A-Z0-9_-]{4,24}$/;
 
-  const { data: delegate, error: delegateError } = await admin
-    .from("delegates")
-    .select("id,role")
-    .eq("user_id", user.id)
-    .maybeSingle();
+type ExistingPasscodeRow = {
+  passcode_plain?: string | null;
+  passcode_hash: string;
+  passcode_salt: string;
+};
 
-  if (delegateError || delegate?.role !== "admin") return null;
-  return { user, delegate };
+function normalizePasscode(input: unknown): string | null {
+  const normalized = String(input || "").trim().toUpperCase();
+  return normalized.length ? normalized : null;
+}
+
+function isValidPasscode(passcode: string) {
+  return PASSCODE_REGEX.test(passcode);
+}
+
+function derivePasscodeHash(passcode: string, salt: string) {
+  return crypto.pbkdf2Sync(passcode, salt, 310000, 32, "sha256").toString("hex");
+}
+
+function makeCommitteePrefix(shortName: string | null | undefined) {
+  const raw = String(shortName || "CMT").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const trimmed = raw.slice(0, 8);
+  return trimmed.length ? trimmed : "CMT";
+}
+
+function generateCandidate(prefix: string) {
+  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `${prefix}-${suffix}`;
+}
+
+function passcodeExists(passcode: string, existing: ExistingPasscodeRow[]) {
+  for (const row of existing) {
+    if (row.passcode_plain && row.passcode_plain === passcode) return true;
+    if (!row.passcode_hash || !row.passcode_salt) continue;
+    try {
+      const derived = derivePasscodeHash(passcode, row.passcode_salt);
+      if (derived === row.passcode_hash) return true;
+    } catch {
+      continue;
+    }
+  }
+  return false;
 }
 
 export async function POST(req: Request) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // Verify admin caller via Authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const adminSession = await ensureAdminUser(authHeader.replace("Bearer ", ""));
-    if (!adminSession) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const { data: { user: adminUser }, error: authError } = await supabaseAdmin.auth.getUser(
+      authHeader.replace("Bearer ", "")
+    );
+    if (authError || !adminUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json();
-    const committeeId = String(body?.committeeId || "");
-    const displayName = String(body?.displayName || "").trim();
-    const role = String(body?.role || "delegate").toLowerCase();
-    const expiresAt = body?.expiresAt ? String(body.expiresAt) : null;
-    const customCode = normalizeCode(body?.passcode);
+    const { data: adminDelegate, error: delegateError } = await supabaseAdmin
+      .from("delegates")
+      .select("role")
+      .eq("user_id", adminUser.id)
+      .maybeSingle();
 
+    if (delegateError || adminDelegate?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+    }
+
+    const { committeeId, displayName, passcode, role, expiresAt } = await req.json();
     if (!committeeId || !displayName) {
-      return NextResponse.json({ error: "committeeId and displayName are required" }, { status: 400 });
-    }
-    if (role !== "delegate" && role !== "eb") {
-      return NextResponse.json({ error: "role must be delegate or eb" }, { status: 400 });
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const admin = createSupabaseAdmin();
-    const { data: committee, error: committeeError } = await admin
+    const { data: committee, error: committeeError } = await supabaseAdmin
       .from("committees")
       .select("short_name")
       .eq("id", committeeId)
       .maybeSingle();
-
     if (committeeError || !committee) {
       return NextResponse.json({ error: "Invalid committee" }, { status: 400 });
     }
 
-    const existing = await listCommitteePasscodes(committeeId);
-
-    let plainCode = customCode;
-    if (plainCode) {
-      if (!isValidCode(plainCode)) {
-        return NextResponse.json({ error: "Invalid code format" }, { status: 400 });
-      }
-      if (existing.some((item) => matchesCode(plainCode!, item))) {
-        return NextResponse.json({ error: "Code already exists" }, { status: 409 });
-      }
-    } else {
-      plainCode = await generateUniqueCommitteeCode(committeeId, committee.short_name, existing);
+    const allowedRoles = new Set(["delegate", "eb", "admin"]);
+    const normalizedRole = String(role || "delegate").toLowerCase();
+    if (!allowedRoles.has(normalizedRole)) {
+      return NextResponse.json({ error: "Role must be delegate, eb, or admin" }, { status: 400 });
     }
 
-    const salt = generateSalt();
-    const hash = derivePasscodeHash(plainCode, salt);
+      const withPlainResult = await supabaseAdmin
+      .from("delegate_passcodes")
+        .select("passcode_plain, passcode_hash, passcode_salt")
+      .eq("committee_id", committeeId);
 
-    const insertObj: Record<string, unknown> = {
+      let existingPasscodes: ExistingPasscodeRow[] | null = withPlainResult.data as ExistingPasscodeRow[] | null;
+      let existingError = withPlainResult.error;
+
+      if (existingError && /passcode_plain/i.test(existingError.message || "")) {
+        const legacyResult = await supabaseAdmin
+          .from("delegate_passcodes")
+          .select("passcode_hash, passcode_salt")
+          .eq("committee_id", committeeId);
+        existingPasscodes = legacyResult.data as ExistingPasscodeRow[] | null;
+        existingError = legacyResult.error;
+      }
+
+    if (existingError) {
+      return NextResponse.json({ error: existingError.message }, { status: 500 });
+    }
+
+    const existing = (existingPasscodes || []) as ExistingPasscodeRow[];
+
+    const normalizedInput = normalizePasscode(passcode);
+    let plain: string;
+
+    if (normalizedInput) {
+      if (!isValidPasscode(normalizedInput)) {
+        return NextResponse.json(
+          {
+            error:
+              "Invalid passcode format. Use 4-24 chars: A-Z, 0-9, underscore, or hyphen.",
+          },
+          { status: 400 },
+        );
+      }
+      if (passcodeExists(normalizedInput, existing)) {
+        return NextResponse.json(
+          { error: "This passcode already exists for the selected committee" },
+          { status: 409 },
+        );
+      }
+      plain = normalizedInput;
+    } else {
+      const prefix = makeCommitteePrefix(committee.short_name);
+      let generated: string | null = null;
+      for (let i = 0; i < 20; i++) {
+        const candidate = generateCandidate(prefix);
+        if (!passcodeExists(candidate, existing)) {
+          generated = candidate;
+          break;
+        }
+      }
+      if (!generated) {
+        return NextResponse.json(
+          { error: "Could not generate a unique passcode. Try again." },
+          { status: 500 },
+        );
+      }
+      plain = generated;
+    }
+
+    const salt = crypto.randomBytes(16).toString("hex");
+    const hash = derivePasscodeHash(plain, salt);
+
+    const insertObj: any = {
       committee_id: committeeId,
       passcode_hash: hash,
       passcode_salt: salt,
-      passcode_plain: plainCode,
+      passcode_plain: plain,
       display_name: displayName,
-      role,
-      revoked: false,
+      role: normalizedRole,
       is_persistent: true,
     };
     if (expiresAt) insertObj.expires_at = expiresAt;
 
-    let inserted = await admin.from("delegate_passcodes").insert(insertObj).select("id").maybeSingle();
+    let { error: insertError, data: inserted } = await supabaseAdmin
+      .from("delegate_passcodes")
+      .insert(insertObj)
+      .select()
+      .maybeSingle();
 
-    if (inserted.error && /passcode_plain/i.test(inserted.error.message || "")) {
+    // Backward compatibility for databases that do not have passcode_plain yet.
+    if (insertError && /passcode_plain/i.test(insertError.message || "")) {
       const legacyInsert = { ...insertObj };
       delete legacyInsert.passcode_plain;
-      inserted = await admin.from("delegate_passcodes").insert(legacyInsert).select("id").maybeSingle();
+      const retry = await supabaseAdmin
+        .from("delegate_passcodes")
+        .insert(legacyInsert)
+        .select()
+        .maybeSingle();
+      insertError = retry.error;
+      inserted = retry.data;
     }
 
-    if (inserted.error || !inserted.data?.id) {
-      return NextResponse.json({ error: inserted.error?.message || "Insert failed" }, { status: 500 });
-    }
+    if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
 
-    await admin.from("passcode_audit").insert({
-      action: "create",
-      admin_user_id: adminSession.user.id,
-      passcode_id: inserted.data.id,
-      details: { passcode: plainCode, display_name: displayName, role, expires_at: expiresAt },
-    });
+    // Audit log
+    await supabaseAdmin.from("passcode_audit").insert({ action: "create", admin_user_id: adminUser.id, passcode_id: inserted.id, details: { display_name: displayName, role: normalizedRole, is_persistent: true, passcode: plain } });
 
-    return NextResponse.json({ success: true, passcode: plainCode, passcodeId: inserted.data.id });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Create failed" }, { status: 500 });
+    return NextResponse.json({ success: true, passcode: plain });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -209,7 +209,6 @@ const COUNTRY_TO_CODE: Record<string, string> = {
   "secretariat": "🏛️",
   "admin": "🏛️",
   "eb": "🏛️",
-  "presentation": "📺",
   "test nation": "🏳️",
 };
 

@@ -221,6 +221,34 @@ export function EmptyState({
   );
 }
 
+export function ErrorBanner({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-4 text-sm text-red-100 shadow-sm mb-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-red-100">Sync Error</p>
+          <p className="mt-1 text-xs text-red-100/80">{message}</p>
+        </div>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-red-100/70 hover:text-white"
+          >
+            Close
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 // ============================================
 // Tab System
 // ============================================

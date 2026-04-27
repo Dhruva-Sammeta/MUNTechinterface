@@ -88,9 +88,11 @@ CREATE TABLE public.committee_messages (
   committee_id uuid NOT NULL REFERENCES public.committees(id) ON DELETE CASCADE,
   session_id uuid NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
   sender_id uuid NOT NULL REFERENCES public.delegates(id) ON DELETE CASCADE,
-  scope text NOT NULL DEFAULT 'public' CHECK (scope IN ('public')),
+  recipient_id uuid REFERENCES public.delegates(id) ON DELETE CASCADE,
+  scope text NOT NULL DEFAULT 'public' CHECK (scope IN ('public', 'private')),
   content text NOT NULL,
   is_approved boolean NOT NULL DEFAULT true,
+  visible_to_eb boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -100,7 +102,88 @@ CREATE INDEX idx_sessions_committee_date ON public.sessions(committee_id, date);
 CREATE INDEX idx_passcodes_committee ON public.delegate_passcodes(committee_id);
 CREATE INDEX idx_passcodes_created ON public.delegate_passcodes(created_at DESC);
 CREATE INDEX idx_messages_committee_created ON public.committee_messages(committee_id, created_at DESC);
+CREATE INDEX idx_messages_recipient_created ON public.committee_messages(recipient_id, created_at DESC) WHERE recipient_id IS NOT NULL;
+CREATE INDEX idx_messages_private_eb_created ON public.committee_messages(committee_id, visible_to_eb, created_at DESC) WHERE scope = 'private';
 CREATE INDEX idx_passcode_audit_passcode ON public.passcode_audit(passcode_id, created_at DESC);
+
+ALTER TABLE public.committee_messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY committee_messages_select_policy
+ON public.committee_messages
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1
+    FROM public.delegates me
+    WHERE me.user_id = auth.uid()
+      AND me.committee_id = committee_messages.committee_id
+      AND (
+        committee_messages.scope = 'public'
+        OR (
+          committee_messages.scope = 'private'
+          AND (
+            committee_messages.sender_id = me.id
+            OR committee_messages.recipient_id = me.id
+          )
+        )
+        OR (
+          committee_messages.scope = 'private'
+          AND committee_messages.visible_to_eb = true
+          AND me.role IN ('eb', 'admin')
+        )
+      )
+  )
+);
+
+CREATE POLICY committee_messages_insert_policy
+ON public.committee_messages
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM public.delegates me
+    WHERE me.user_id = auth.uid()
+      AND me.id = committee_messages.sender_id
+      AND me.committee_id = committee_messages.committee_id
+  )
+  AND (
+    (
+      committee_messages.scope = 'public'
+      AND committee_messages.recipient_id IS NULL
+      AND committee_messages.visible_to_eb = false
+    )
+    OR
+    (
+      committee_messages.scope = 'private'
+      AND committee_messages.recipient_id IS NOT NULL
+      AND committee_messages.recipient_id <> committee_messages.sender_id
+      AND EXISTS (
+        SELECT 1
+        FROM public.delegates recipient
+        WHERE recipient.id = committee_messages.recipient_id
+          AND recipient.committee_id = committee_messages.committee_id
+      )
+    )
+  )
+);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime'
+        AND schemaname = 'public'
+        AND tablename = 'committee_messages'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE public.committee_messages;
+    END IF;
+  END IF;
+END
+$$;
 
 INSERT INTO public.committees (name, short_name, join_code) VALUES
   ('Disarmament and International Security Committee', 'DISEC', 'DISEC'),

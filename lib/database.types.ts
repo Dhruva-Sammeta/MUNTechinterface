@@ -1,10 +1,10 @@
 // ============================================
 // Sapphire MUN — Database Type Definitions
-// Matches: 001_initial_schema.sql v2
+// Canonical schema: 20260414235900_canonical_schema.sql
 // ============================================
 
 export type SessionMode = "normal" | "crisis" | "voting" | "break";
-export type DelegateRole = "delegate" | "eb" | "presentation" | "admin";
+export type DelegateRole = "delegate" | "eb" | "admin";
 export type VotePosition = "for" | "against" | "abstain";
 export type VotingRoundStatus = "open" | "closed";
 export type DocumentType =
@@ -28,11 +28,12 @@ export interface Committee {
   id: string;
   name: string;
   short_name: string;
-  type: CommitteeType;
-  level: string;
-  theme: CommitteeTheme;
   join_code: string;
   created_at: string;
+  // Legacy optional UI fields retained for compatibility with older layouts.
+  type?: CommitteeType;
+  level?: string;
+  theme?: CommitteeTheme;
 }
 
 export interface Delegate {
@@ -137,6 +138,7 @@ export interface SpeakerListConfig {
   created_by: string;
 }
 
+// Current chat scopes used by UI and DB.
 export type MessageScope = "public" | "private" | "bloc" | "eb";
 
 export interface GlobalAnnouncement {
@@ -152,11 +154,12 @@ export interface CommitteeMessage {
   committee_id: string;
   session_id: string;
   sender_id: string;
-  recipient_id: string | null;
-  bloc_id: string | null;
+  recipient_id?: string | null;
+  bloc_id?: string | null;
   scope: MessageScope;
   content: string;
   is_approved: boolean;
+  visible_to_eb?: boolean;
   created_at: string;
 }
 

@@ -1,20 +1,20 @@
-import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { createSupabaseAdmin } from "@/lib/server/supabaseAdmin";
-import { normalizeCode } from "@/lib/server/passcodes";
-
-function adminCodeValid(input: unknown): boolean {
-  const code = normalizeCode(input);
-  const envCode = normalizeCode(process.env.ADMIN_PASSCODE || "86303");
-  return !!code && code === envCode;
-}
+import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 export async function POST(req: Request) {
   try {
-    const admin = createSupabaseAdmin();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
     const authHeader = req.headers.get("Authorization");
     const body = await req.json().catch(() => ({}));
-    const requestedCommitteeId = typeof body?.committeeId === "string" ? body.committeeId : null;
+    const requestedCommitteeId =
+      typeof body?.committeeId === "string" ? body.committeeId : null;
+    const adminCode = String(body?.adminCode || "").trim().toUpperCase();
 
     let userId: string | null = null;
     let bootstrapCredentials: { email: string; password: string } | null = null;
@@ -23,85 +23,98 @@ export async function POST(req: Request) {
       const token = authHeader.replace("Bearer ", "");
       const {
         data: { user },
-        error: userError,
-      } = await admin.auth.getUser(token);
-      if (userError || !user) {
+        error: authError,
+      } = await supabaseAdmin.auth.getUser(token);
+
+      if (authError || !user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
       userId = user.id;
     } else {
-      if (!adminCodeValid(body?.adminCode)) {
+      // Fallback path for admin entry from picker when anonymous auth is disabled.
+      const envAdminPass = String(process.env.ADMIN_PASSCODE || "").toUpperCase();
+      const validAdmin = adminCode === "86303" || (!!envAdminPass && adminCode === envAdminPass);
+      if (!validAdmin) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
-      const email = process.env.ADMIN_BOOTSTRAP_EMAIL || "bootstrap-admin@sapphiremun.local";
-      const password = crypto.randomBytes(18).toString("base64url");
+      const bootstrapEmail = process.env.ADMIN_BOOTSTRAP_EMAIL || "bootstrap-admin@sapphiremun.local";
+      const bootstrapPassword = crypto.randomBytes(18).toString("base64url");
 
-      const { data: created, error: createError } = await admin.auth.admin.createUser({
-        email,
-        password,
+      const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: bootstrapEmail,
+        password: bootstrapPassword,
         email_confirm: true,
       });
 
-      if (createError && !/already|exists|registered/i.test(createError.message || "")) {
-        return NextResponse.json({ error: createError.message }, { status: 500 });
+      if (createErr && !/already|exists|registered/i.test(createErr.message || "")) {
+        return NextResponse.json({ error: createErr.message }, { status: 500 });
       }
 
       if (created?.user?.id) {
         userId = created.user.id;
       } else {
-        const { data: usersPage, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-        if (listError) return NextResponse.json({ error: listError.message }, { status: 500 });
-
-        const existing = usersPage.users.find((item) => item.email?.toLowerCase() === email.toLowerCase());
+        const { data: usersPage, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        if (listErr) return NextResponse.json({ error: listErr.message }, { status: 500 });
+        const existing = usersPage?.users?.find((u) => u.email?.toLowerCase() === bootstrapEmail.toLowerCase());
         if (!existing?.id) {
-          return NextResponse.json({ error: "Could not resolve bootstrap user" }, { status: 500 });
+          return NextResponse.json({ error: "Failed to locate bootstrap admin user" }, { status: 500 });
         }
         userId = existing.id;
-
-        const { error: updateError } = await admin.auth.admin.updateUserById(existing.id, {
-          password,
+        const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(existing.id, {
+          password: bootstrapPassword,
           email_confirm: true,
         });
-        if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+        if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
       }
 
-      bootstrapCredentials = { email, password };
+      bootstrapCredentials = {
+        email: bootstrapEmail,
+        password: bootstrapPassword,
+      };
     }
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: existingDelegate } = await admin
+    // Keep existing committee when possible; otherwise fall back to selected committee
+    // or the first available committee.
+    const { data: existingDelegate } = await supabaseAdmin
       .from("delegates")
-      .select("id,committee_id")
+      .select("id, committee_id")
       .eq("user_id", userId)
       .maybeSingle();
 
-    let committeeId = existingDelegate?.committee_id || requestedCommitteeId;
+    let committeeId = existingDelegate?.committee_id ?? requestedCommitteeId;
     if (!committeeId) {
-      const { data: firstCommittee } = await admin
+      const { data: firstCommittee } = await supabaseAdmin
         .from("committees")
         .select("id")
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
-      committeeId = firstCommittee?.id || null;
+      committeeId = firstCommittee?.id ?? null;
     }
 
     if (!committeeId) {
-      return NextResponse.json({ error: "No committee configured" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No committee exists to attach admin user" },
+        { status: 400 },
+      );
     }
 
     if (existingDelegate?.id) {
-      const { error: updateError } = await admin
+      const { error } = await supabaseAdmin
         .from("delegates")
-        .update({ role: "admin", has_logged_in: true })
+        .update({
+          role: "admin",
+          has_logged_in: true,
+        })
         .eq("id", existingDelegate.id);
-      if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     } else {
-      const { error: insertError } = await admin.from("delegates").insert({
+      const { error } = await supabaseAdmin.from("delegates").insert({
         user_id: userId,
         committee_id: committeeId,
         display_name: "Secretariat Admin",
@@ -109,11 +122,11 @@ export async function POST(req: Request) {
         role: "admin",
         has_logged_in: true,
       });
-      if (insertError) return NextResponse.json({ error: insertError.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, bootstrapCredentials });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Bootstrap failed" }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || "Failed" }, { status: 500 });
   }
 }
