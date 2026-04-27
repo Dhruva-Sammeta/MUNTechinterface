@@ -557,11 +557,6 @@ export default function LoginPage() {
                     value={passcode}
                     onChange={(e) => setPasscode(e.target.value.toUpperCase())}
                     className="w-full bg-[#0a1840]/60 border border-white/10 rounded-xl px-4 py-3 text-white text-center tracking-[0.3em] font-mono text-base outline-none focus:border-cyan-500/60 focus:shadow-[0_0_0_3px_rgba(15,200,255,0.1)] transition-all"
-                    placeholder={
-                      adminEntry
-                        ? ""
-                        : ""
-                    }
                     maxLength={24}
                     autoFocus
                     required
@@ -626,7 +621,6 @@ export default function LoginPage() {
                     value={delegation}
                     onChange={(e) => setDelegation(e.target.value)}
                     className="w-full bg-[#0a1840]/60 border border-white/10 rounded-xl px-4 py-3 text-white outline-none focus:border-cyan-500/60 focus:shadow-[0_0_0_3px_rgba(15,200,255,0.1)] transition-all"
-                    placeholder=""
                     autoFocus
                     required
                   />
