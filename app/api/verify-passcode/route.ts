@@ -110,6 +110,18 @@ export async function POST(req: Request) {
       if (committeePatternRole) {
         return NextResponse.json({ valid: true, role: committeePatternRole });
       }
+    } else {
+      const { data: committees } = await supabaseAdmin
+        .from("committees")
+        .select("short_name")
+        .limit(200);
+
+      for (const committee of (committees || []) as Array<{ short_name: string }>) {
+        const role = getCommitteeHardcodedRoleForPasscode(code, committee.short_name);
+        if (role) {
+          return NextResponse.json({ valid: true, role });
+        }
+      }
     }
 
     // If no committee is selected and this is not an admin passcode, reject early.
